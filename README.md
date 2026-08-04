@@ -6,7 +6,8 @@ implements, and its `docs/LOYVERSE.md` is the POS integration study this app wil
 
 ## Stack, and why
 
-**Laravel 13 · PHP 8.3 · MySQL (SQLite in development).**
+**Laravel 13 · PHP 8.3 · MySQL** — Laragon's MySQL 8.4 locally (database
+`twz_manager`, browseable in phpMyAdmin), Hostinger's MySQL in production.
 
 Chosen for one hard constraint: it must run on Hostinger, on any plan. Hostinger's shared
 hosting is PHP-first — PHP version per domain in hPanel, MySQL with phpMyAdmin, Composer on
@@ -59,7 +60,8 @@ not used — the frontend contract promises plain requests.
 
 ## Running it locally
 
-Needs PHP 8.3+ and Composer (both on PATH after setup).
+Needs PHP 8.3+, Composer, and a running MySQL (Laragon's, with the
+`twz_manager` database — or set `DB_CONNECTION=sqlite` and skip MySQL).
 
 ```bash
 composer install
@@ -67,6 +69,10 @@ cp .env.example .env      # then: php artisan key:generate
 php artisan migrate --seed
 php artisan serve         # http://localhost:8000
 ```
+
+phpMyAdmin over the same database: start Laragon (or serve the bundled copy
+directly: `php -S 127.0.0.1:8080 -t C:\laragon\etc\apps\phpmyadmin`), sign in
+as `root` with no password.
 
 Seeded accounts — password `password` for all of them:
 
