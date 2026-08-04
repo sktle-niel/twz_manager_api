@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureOwner;
 use App\Http\Middleware\VerifyOriginOnUnsafeRequests;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -36,6 +37,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(
             fn (Request $request) => $request->is('api/*') ? null : '/',
         );
+
+        $middleware->alias([
+            'owner' => EnsureOwner::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

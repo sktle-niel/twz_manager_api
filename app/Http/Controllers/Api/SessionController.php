@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 
 class SessionController extends Controller
 {
@@ -29,6 +30,20 @@ class SessionController extends Controller
         ]);
 
         $identifier = mb_strtolower(trim($credentials['identifier']));
+
+        /* Five failures per minute per identifier+IP before the door pauses.
+           Only failures count — a shop device signing three managers in and
+           out all day must never trip this. */
+        $throttleKey = 'login:'.$identifier.'|'.$request->ip();
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+
+            return response()->json(
+                ['message' => "Too many attempts. Try again in {$seconds} seconds."],
+                429,
+            );
+        }
+
         $user = User::query()
             ->whereRaw('lower(username) = ?', [$identifier])
             ->orWhereRaw('lower(email) = ?', [$identifier])
@@ -37,11 +52,15 @@ class SessionController extends Controller
         /* One message for a wrong user and a wrong password alike — the form
            must not reveal which accounts exist */
         if ($user === null || ! Hash::check($credentials['password'], $user->password)) {
+            RateLimiter::hit($throttleKey, 60);
+
             return response()->json(
                 ['message' => 'That username and password do not match.'],
                 401,
             );
         }
+
+        RateLimiter::clear($throttleKey);
 
         if (! $user->active) {
             return response()->json(

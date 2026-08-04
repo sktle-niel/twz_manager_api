@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\PasswordResetController;
+use App\Http\Controllers\Api\PosSettingsController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\StoreController;
 use Illuminate\Support\Facades\Route;
@@ -22,4 +23,11 @@ Route::post('/password-resets', [PasswordResetController::class, 'store']);
 
 Route::middleware('auth:web')->group(function () {
     Route::get('/stores', [StoreController::class, 'index']);
+
+    /* ---- owner only ---- */
+
+    Route::middleware('owner')->group(function () {
+        Route::get('/settings/pos', [PosSettingsController::class, 'show']);
+        Route::post('/settings/pos/reconnect', [PosSettingsController::class, 'reconnect']);
+    });
 });

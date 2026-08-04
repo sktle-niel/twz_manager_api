@@ -29,10 +29,28 @@ past what Hostinger runs, even when local PHP is newer.
 | `DELETE /api/session` | done |
 | `POST /api/password-resets` | accepts and 204s; the reset email itself awaits mail config |
 | `GET /api/stores` | done (auth required) |
-| everything else in `docs/API.md` | not yet — sales, expenses, audits, deposits, settings |
+| `GET /api/settings/pos` | done (owner only) — connection status, linked-store count, token hint |
+| `POST /api/settings/pos/reconnect` | done (owner only) — live token validation with human answers |
+| everything else in `docs/API.md` | not yet — sales, expenses, audits, deposits, reconciliation settings |
 
 Error bodies follow the contract: `{ message, fields? }`, one human-readable message per
 field. A 401 from any endpoint drops the frontend to its sign-in screen.
+
+**Rate limits, both directions:**
+
+- *Inbound* — the api group throttles at 120 requests/minute per account (per IP before
+  sign-in), and sign-in itself pauses for a minute after five failures per identifier+IP;
+  only failures count, and a success clears the slate.
+- *Outbound* — every Loyverse request goes through `App\Services\Loyverse\LoyverseClient`,
+  which counts against a cache-backed budget (`LOYVERSE_RATE_BUDGET`, default 240 of the
+  account's 300-per-300-seconds) *before* the request leaves, and treats a 429 from
+  Loyverse as the same condition with a Retry-After. Callers get
+  `LoyverseBudgetExhausted` and reschedule — nothing ever spins against the merchant's
+  shared budget.
+
+**The Loyverse token** has no scopes — full read/write over the whole merchant account. It
+lives in `.env` (`LOYVERSE_API_TOKEN`) and nowhere else; the API exposes only its last four
+characters as `tokenHint`.
 
 **CSRF stance:** the session cookie is `SameSite=Lax` and every write verifies the `Origin`
 header against the app's own origin plus `FRONTEND_ORIGINS`
