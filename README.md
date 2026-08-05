@@ -28,7 +28,8 @@ past what Hostinger runs, even when local PHP is newer.
 | `GET /api/session` | done — anonymous answers `{manager: null, owner: null}`, never 401 |
 | `POST /api/session` | done — username or Gmail, case-insensitive, `remember` honoured |
 | `DELETE /api/session` | done |
-| `POST /api/password-resets` | accepts and 204s; the reset email itself awaits mail config |
+| `POST /api/password-resets` | done — stores a token, mails the link, 204 either way |
+| `POST /api/password-resets/redeem` | done — spends the token, one use, 60-minute life |
 | `GET /api/stores` | done (auth required) |
 | `GET /api/settings/pos` | done (owner only) — connection status, linked-store count, token hint |
 | `POST /api/settings/pos/reconnect` | done (owner only) — live token validation with human answers |
@@ -41,13 +42,34 @@ field. A 401 from any endpoint drops the frontend to its sign-in screen.
 
 - *Inbound* — the api group throttles at 120 requests/minute per account (per IP before
   sign-in), and sign-in itself pauses for a minute after five failures per identifier+IP;
-  only failures count, and a success clears the slate.
+  only failures count, and a success clears the slate. Asking for a reset link is tighter
+  still — six per hour per IP, because that endpoint sends mail to an address the caller
+  names. The group-wide limiter only runs because `bootstrap/app.php` opts in with
+  `throttleApi()`; Laravel no longer includes `throttle:api` by default, so defining a
+  limiter is not the same as applying one. `tests/Feature/Api/RateLimitTest.php` fails if
+  that line ever goes missing.
 - *Outbound* — every Loyverse request goes through `App\Services\Loyverse\LoyverseClient`,
   which counts against a cache-backed budget (`LOYVERSE_RATE_BUDGET`, default 240 of the
   account's 300-per-300-seconds) *before* the request leaves, and treats a 429 from
   Loyverse as the same condition with a Retry-After. Callers get
   `LoyverseBudgetExhausted` and reschedule — nothing ever spins against the merchant's
   shared budget.
+
+**Password resets** take two requests. `POST /api/password-resets` accepts a username or Gmail
+address and answers `204` whether or not the account exists — the endpoint must never reveal who
+has one. Behind that 204, a hashed token goes into `password_reset_tokens` (one row per account,
+replaced by any newer request, deleted the moment it is spent) and Laravel mails a link. The link
+points at the **frontend**, named by `FRONTEND_URL` — the page that collects a new password belongs
+to the PWA, and this API serves no HTML. `POST /api/password-resets/redeem` spends it: the token
+travels in the body rather than the URL so it never lands in an access log, it works once, it dies
+after sixty minutes, and a fresh `remember_token` signs out any device still holding an old
+"remember me" cookie. A disabled account is refused at both ends — silently when asking, and as an
+expired link when redeeming.
+
+In development `MAIL_MAILER=log`, so the link lands in `storage/logs/laravel.log` rather than an
+inbox. **The frontend still owes this flow a page**: `/reset-password`, reading `token` and `email`
+off the query string and posting them back with the new password. Until that exists the mailed link
+opens nothing — the backend half is done, the browser half is not.
 
 **The Loyverse token** has no scopes — full read/write over the whole merchant account. It
 lives in `.env` (`LOYVERSE_API_TOKEN`) and nowhere else; the API exposes only its last four

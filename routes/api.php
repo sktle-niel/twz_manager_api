@@ -17,7 +17,14 @@ use Illuminate\Support\Facades\Route;
 Route::get('/session', [SessionController::class, 'show']);
 Route::post('/session', [SessionController::class, 'store']);
 Route::delete('/session', [SessionController::class, 'destroy']);
-Route::post('/password-resets', [PasswordResetController::class, 'store']);
+
+/* Asking for a link sends mail to an address the caller names, so it carries
+   a tighter limit than the group's. Redeeming one does not: the token is 60
+   random characters, guessing is not the threat, and a manager fumbling a new
+   password twice must not be locked out of their own reset. */
+Route::post('/password-resets', [PasswordResetController::class, 'store'])
+    ->middleware('throttle:password-resets');
+Route::post('/password-resets/redeem', [PasswordResetController::class, 'redeem']);
 
 /* ---- signed-in area ---- */
 

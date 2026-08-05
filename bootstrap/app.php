@@ -32,6 +32,16 @@ return Application::configure(basePath: dirname(__DIR__))
             VerifyOriginOnUnsafeRequests::class,
         ]);
 
+        /*
+         * Laravel stopped putting throttle:api in the api group by default,
+         * so defining the limiter is not enough — without this line the
+         * limiter in AppServiceProvider is never consulted and every route
+         * is unmetered. Prepended middleware runs ahead of the throttle,
+         * which is what makes the per-account key work: StartSession has
+         * already resolved $request->user() by the time the limiter reads it.
+         */
+        $middleware->throttleApi();
+
         /* An API guest gets the 401 JSON body, never a redirect to a login
            page that does not exist — the frontend's fetch sends Accept: * */
         $middleware->redirectGuestsTo(
