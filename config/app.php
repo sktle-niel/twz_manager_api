@@ -56,21 +56,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Frontend URL
-    |--------------------------------------------------------------------------
-    |
-    | Where the PWA lives. Only links the backend mails out need this — a
-    | password reset has to point at a page the browser can open, and that
-    | page belongs to the frontend. In production the PWA is served
-    | same-origin, so APP_URL is the right default; in development Vite is
-    | on its own port and FRONTEND_URL names it.
-    |
-    */
-
-    'frontend_url' => rtrim((string) env('FRONTEND_URL', env('APP_URL', 'http://localhost')), '/'),
-
-    /*
-    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

@@ -24,6 +24,16 @@ class LoyverseClient
 {
     private const BUDGET_KEY = 'loyverse:budget';
 
+    private ?int $timeoutOverride = null;
+
+    /** A per-call timeout, for callers on a tighter clock than the default */
+    public function usingTimeout(int $seconds): static
+    {
+        $this->timeoutOverride = $seconds;
+
+        return $this;
+    }
+
     /** GET /merchant — the cheapest call that proves the token works */
     public function merchant(): array
     {
@@ -76,7 +86,7 @@ class LoyverseClient
             $response = Http::withToken($token)
                 ->acceptJson()
                 ->baseUrl((string) config('loyverse.base_url'))
-                ->timeout(15)
+                ->timeout($this->timeoutOverride ?? (int) config('loyverse.timeout'))
                 ->get($path, $query);
         } catch (ConnectionException $e) {
             throw new LoyverseException("Could not reach Loyverse: {$e->getMessage()}", previous: $e);

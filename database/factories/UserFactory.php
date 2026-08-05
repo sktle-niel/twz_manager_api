@@ -24,22 +24,27 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $name = fake()->name();
+
         return [
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
-            'email_verified_at' => now(),
+            'name' => $name,
+            // The username is the credential now, so it has to be unique
+            'username' => Str::slug($name, '.').'.'.fake()->unique()->numberBetween(1, 99999),
             'password' => static::$password ??= Hash::make('password'),
+            'role' => User::ROLE_MANAGER,
+            'store_id' => null,
+            'active' => true,
             'remember_token' => Str::random(10),
         ];
     }
 
-    /**
-     * Indicate that the model's email address should be unverified.
-     */
-    public function unverified(): static
+    public function owner(): static
     {
-        return $this->state(fn (array $attributes) => [
-            'email_verified_at' => null,
-        ]);
+        return $this->state(fn (array $attributes) => ['role' => User::ROLE_OWNER]);
+    }
+
+    public function disabled(): static
+    {
+        return $this->state(fn (array $attributes) => ['active' => false]);
     }
 }

@@ -21,7 +21,7 @@ class PosSettingsTest extends TestCase
 
     private function owner(): User
     {
-        return User::query()->where('username', 'twz.owner')->firstOrFail();
+        return User::query()->where('username', 'twowheelszone')->firstOrFail();
     }
 
     private function manager(): User
@@ -75,7 +75,7 @@ class PosSettingsTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath(
                 'message',
-                'Loyverse rejected the token. It may have been deleted — create a new one and update the server.',
+                'Loyverse rejected the token. It may have been deleted. Create a new one and update the server.',
             );
 
         // And the status now reads disconnected without another probe

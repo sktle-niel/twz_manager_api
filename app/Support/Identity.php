@@ -31,7 +31,6 @@ class Identity
             'id' => (string) $user->id,
             'name' => $user->name,
             'username' => $user->username,
-            'email' => $user->email,
             'storeId' => $user->store_id,
             'active' => $user->active,
             'photoUrl' => self::photoUrl($user),
@@ -45,7 +44,6 @@ class Identity
             'id' => (string) $user->id,
             'name' => $user->name,
             'username' => $user->username,
-            'email' => $user->email,
             'photoUrl' => self::photoUrl($user),
         ];
     }

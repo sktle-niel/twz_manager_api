@@ -33,7 +33,7 @@ class PosSettingsController extends Controller
             );
         } catch (LoyverseAuthException) {
             return response()->json(
-                ['message' => 'Loyverse rejected the token. It may have been deleted — create a new one and update the server.'],
+                ['message' => 'Loyverse rejected the token. It may have been deleted. Create a new one and update the server.'],
                 422,
             );
         } catch (LoyverseBudgetExhausted $e) {

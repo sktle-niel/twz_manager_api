@@ -28,12 +28,20 @@ past what Hostinger runs, even when local PHP is newer.
 | `GET /api/session` | done — anonymous answers `{manager: null, owner: null}`, never 401 |
 | `POST /api/session` | done — username or Gmail, case-insensitive, `remember` honoured |
 | `DELETE /api/session` | done |
-| `POST /api/password-resets` | done — stores a token, mails the link, 204 either way |
-| `POST /api/password-resets/redeem` | done — spends the token, one use, 60-minute life |
-| `GET /api/stores` | done (auth required) |
+| `PUT /api/account/password` | done — both roles change their own, current password required |
+| `PUT /api/managers/{id}/password` | done (owner only) — recovery, behind the PIN |
+| `GET /api/settings/reset-pin` | done (owner only) — whether the PIN is still the shipped one |
+| `PUT /api/settings/reset-pin` | done (owner only) — change it |
+| `GET /api/stores` | done (auth required) — real branches, synced from Loyverse |
 | `GET /api/settings/pos` | done (owner only) — connection status, linked-store count, token hint |
 | `POST /api/settings/pos/reconnect` | done (owner only) — live token validation with human answers |
-| everything else in `docs/API.md` | not yet — sales, expenses, audits, deposits, reconciliation settings |
+| `GET /api/sales/daily`, `GET /api/sales/hourly` | done — real Loyverse receipts, gross + gross profit |
+| `GET /api/audits`, `GET /api/deposits`, `GET /api/deposits/pending` | done — the audit spine, deposits read-only |
+| `GET/POST/PATCH/DELETE /api/expenses`, `GET/PUT /api/expense-categories` | done — with receipt photos |
+| `GET /api/accounts/{id}/sign-ins` | done — recorded at login, "this device" by session |
+| `GET/PATCH /api/settings/reconciliation` | done — read by both roles, written by the owner |
+| `GET /api/files/{path}` | done — stored photos, behind the session cookie |
+| still missing | `POST /api/deposits` (record with slip), managers CRUD, `PATCH /api/account`, search |
 
 Error bodies follow the contract: `{ message, fields? }`, one human-readable message per
 field. A 401 from any endpoint drops the frontend to its sign-in screen.
@@ -42,9 +50,9 @@ field. A 401 from any endpoint drops the frontend to its sign-in screen.
 
 - *Inbound* — the api group throttles at 120 requests/minute per account (per IP before
   sign-in), and sign-in itself pauses for a minute after five failures per identifier+IP;
-  only failures count, and a success clears the slate. Asking for a reset link is tighter
-  still — six per hour per IP, because that endpoint sends mail to an address the caller
-  names. The group-wide limiter only runs because `bootstrap/app.php` opts in with
+  only failures count, and a success clears the slate. The recovery PIN is tighter still —
+  five wrong tries and it stops answering that owner for fifteen minutes, because four
+  digits is ten thousand guesses. The group-wide limiter only runs because `bootstrap/app.php` opts in with
   `throttleApi()`; Laravel no longer includes `throttle:api` by default, so defining a
   limiter is not the same as applying one. `tests/Feature/Api/RateLimitTest.php` fails if
   that line ever goes missing.
@@ -55,21 +63,27 @@ field. A 401 from any endpoint drops the frontend to its sign-in screen.
   `LoyverseBudgetExhausted` and reschedule — nothing ever spins against the merchant's
   shared budget.
 
-**Password resets** take two requests. `POST /api/password-resets` accepts a username or Gmail
-address and answers `204` whether or not the account exists — the endpoint must never reveal who
-has one. Behind that 204, a hashed token goes into `password_reset_tokens` (one row per account,
-replaced by any newer request, deleted the moment it is spent) and Laravel mails a link. The link
-points at the **frontend**, named by `FRONTEND_URL` — the page that collects a new password belongs
-to the PWA, and this API serves no HTML. `POST /api/password-resets/redeem` spends it: the token
-travels in the body rather than the URL so it never lands in an access log, it works once, it dies
-after sixty minutes, and a fresh `remember_token` signs out any device still holding an old
-"remember me" cookie. A disabled account is refused at both ends — silently when asking, and as an
-expired link when redeeming.
+**No email anywhere.** Accounts have no email address: nobody signs in with one, nothing is
+mailed to one, and the column is gone. It was a field somebody had to invent a value for and
+nothing ever read.
 
-In development `MAIL_MAILER=log`, so the link lands in `storage/logs/laravel.log` rather than an
-inbox. **The frontend still owes this flow a page**: `/reset-password`, reading `token` and `email`
-off the query string and posting them back with the new password. Until that exists the mailed link
-opens nothing — the backend half is done, the browser half is not.
+**Recovery** therefore runs through the owner. A manager who is locked out asks in person, and the
+owner sets a new password from the Managers page — `PUT /api/managers/{id}/password`, no old
+password needed, because the whole point is that nobody has it. Two locks guard it: being signed in
+as the owner, and a 4-digit PIN. Neither alone is enough, so an unattended laptop still signed in
+cannot be used to take a branch account. Setting a password also rotates `remember_token`, which
+signs out every device that was still holding one.
+
+**The PIN** starts as `ADMIN_RESET_PIN` in `.env` (`8017` out of the box) and moves to the database
+the moment the owner changes it, hashed — from then on the `.env` value is never read again. It
+lives in two places on purpose: a fresh install needs a known first PIN, and a web request cannot
+rewrite `.env` (nor would a cached config notice if it did). `GET /api/settings/reset-pin` reports
+whether it is still the shipped value — including when somebody sets it back to that — because a
+default written down in a repo is not a secret. **Change it before the first deploy.**
+
+**When the owner is the one locked out**, there is nobody above them and no inbox to mail. The way
+back is `php artisan twz:set-password <username>` over SSH, deliberately outside the API: reaching
+the server at all is already proof of who you are.
 
 **The Loyverse token** has no scopes — full read/write over the whole merchant account. It
 lives in `.env` (`LOYVERSE_API_TOKEN`) and nowhere else; the API exposes only its last four
@@ -96,14 +110,28 @@ phpMyAdmin over the same database: start Laragon (or serve the bundled copy
 directly: `php -S 127.0.0.1:8080 -t C:\laragon\etc\apps\phpmyadmin`), sign in
 as `root` with no password.
 
-Seeded accounts — password `password` for all of them:
+**Branches are real, not seeded.** `php artisan twz:sync-stores` pulls the store list from
+Loyverse and links it to ours by name (slugified both sides, so "La Paz" finds `lapaz`).
+Our ids stay ours — `loyverse_store_id` is the only bridge — a Loyverse store nothing matches
+becomes a new branch, and a local branch Loyverse does not know is reported, never deleted.
+Run it at setup and whenever a branch opens or closes. The four invented branches
+(Arevalo/Molo/Jaro/La Paz) now exist only inside the test suite.
 
-| Account | Role |
-|---|---|
-| `twz.owner` / owner@gmail.com | owner |
-| `marvin.deocampo` | manager, Arevalo |
-| `joel.sarabia` | manager, Molo |
-| `rhea.villanueva` | manager, Jaro |
+Seeded accounts:
+
+| Username | Role | Password |
+|---|---|---|
+| `twowheelszone` | owner | `OWNER_PASSWORD` in `.env` — the *first* sign-in only |
+| `marvin.deocampo` | manager, Arevalo | `password` |
+| `joel.sarabia` | manager, Molo | `password` |
+| `rhea.villanueva` | manager, Jaro | `password` |
+| `testaccount` | manager, La Paz | `test1234` |
+
+The owner's password is seeded exactly once, when no owner exists yet; change it on the
+Account page and it lives in the database from then on — reseeding never puts the `.env`
+value back (`tests/Feature/SeededOwnerTest.php` holds that promise). The dev accounts do
+reset to the passwords above on every seed, and they are skipped entirely in production.
+The recovery PIN on a fresh database is `8017`.
 
 ### Pairing with the frontend
 
@@ -122,10 +150,16 @@ VITE_DATA_SOURCE=http npm run dev   # real backend instead of sample data
    `public_html` and make `public_html` a symlink to `public/`).
 3. **Database**: create a MySQL database + user in hPanel, then in `.env`:
    `DB_CONNECTION=mysql` with the credentials, `APP_ENV=production`, `APP_DEBUG=false`,
-   `APP_URL=https://your-domain`, `SESSION_SECURE_COOKIE=true`.
-4. **First boot**: `php artisan migrate --force`, `php artisan config:cache`,
-   `php artisan route:cache` (via SSH).
-5. **Cron**: one hPanel cron entry runs everything scheduled, including the future Loyverse
+   `APP_URL=https://your-domain`, `SESSION_SECURE_COOKIE=true`, and the owner's first
+   credentials — `OWNER_USERNAME` and a strong, never-committed `OWNER_PASSWORD`.
+4. **First boot**: `php artisan migrate --force`, `php artisan db:seed --force` (outside
+   the test suite this creates only the owner), `php artisan twz:sync-stores` (pulls the
+   real branches from Loyverse), then `php artisan config:cache`,
+   `php artisan route:cache`, `php artisan view:cache` (via SSH).
+5. **Change the PIN**: `ADMIN_RESET_PIN` ships as `8017` and is written down in this repo.
+   Set a different one in `.env` before the first sign-in, or change it in Settings straight
+   after — the app warns while it is still the shipped value.
+6. **Cron**: one hPanel cron entry runs everything scheduled, including the future Loyverse
    sync: `* * * * * php /path/to/app/artisan schedule:run`.
-6. **Secrets**: the Loyverse token goes in `.env` on the server only — it has no scopes and
+7. **Secrets**: the Loyverse token goes in `.env` on the server only — it has no scopes and
    grants full merchant access. It must never appear in the repo or the frontend.

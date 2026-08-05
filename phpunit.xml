@@ -19,6 +19,11 @@
     </source>
     <php>
         <env name="APP_ENV" value="testing"/>
+        <!-- Pinned so the suite never inherits the real owner password from .env -->
+        <env name="OWNER_USERNAME" value="twowheelszone"/>
+        <env name="OWNER_PASSWORD" value="password"/>
+        <!-- Blank so no test can ever reach the real Loyverse account -->
+        <env name="LOYVERSE_API_TOKEN" value=""/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>

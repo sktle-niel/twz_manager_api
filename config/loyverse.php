@@ -30,4 +30,26 @@ return [
        endpoint would probe again. */
     'status_ttl' => 3600,
 
+    /* Seconds before a request is abandoned. A 250-receipt page over a long
+       window is slow on Loyverse's side; 15s was measured too tight. */
+    'timeout' => (int) env('LOYVERSE_TIMEOUT', 45),
+
+    /* The inline (page-view) sync gets a much shorter leash: PHP's own web
+       execution limit is 30s, so a 45s curl wait dies as a fatal error no
+       catch can reach. Better to give up fast and serve the local copy. */
+    'timeout_inline' => (int) env('LOYVERSE_TIMEOUT_INLINE', 8),
+
+    /* How far back the FIRST receipt sync reaches. After that the watermark
+       takes over and every run is incremental. */
+    'backfill_days' => (int) env('LOYVERSE_BACKFILL_DAYS', 90),
+
+    /* A sales read re-syncs inline when the last run is older than this many
+       seconds — near-realtime without a request per page view. */
+    'receipt_stale_after' => 120,
+
+    /* Page caps per run: small inline (a page view is waiting), deep for the
+       command (backfill has thousands of receipts to walk). */
+    'sync_pages_inline' => 5,
+    'sync_pages_command' => 200,
+
 ];
