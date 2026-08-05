@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\SignIn;
 use App\Models\User;
+use App\Support\DeviceName;
 use App\Support\Identity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -44,13 +46,14 @@ class SessionController extends Controller
             );
         }
 
+        /* Username only. Accounts have no email address to sign in with, and
+           the one field keeps the sign-in form honest about what it wants. */
         $user = User::query()
             ->whereRaw('lower(username) = ?', [$identifier])
-            ->orWhereRaw('lower(email) = ?', [$identifier])
             ->first();
 
-        /* One message for a wrong user and a wrong password alike — the form
-           must not reveal which accounts exist */
+        /* One message for a wrong username and a wrong password alike — the
+           form must not reveal which accounts exist */
         if ($user === null || ! Hash::check($credentials['password'], $user->password)) {
             RateLimiter::hit($throttleKey, 60);
 
@@ -72,6 +75,25 @@ class SessionController extends Controller
         Auth::guard('web')->login($user, (bool) ($credentials['remember'] ?? false));
         // A fresh id on every sign-in, so a pre-auth cookie cannot be fixated
         $request->session()->regenerate();
+
+        /* The sign-in log: which device, from where, tied to this session so
+           "this device" is a fact later. Kept short — the last 15 tell the
+           story, and the table must not grow with every shop morning. */
+        $described = DeviceName::parse($request->userAgent());
+        SignIn::query()->create([
+            'user_id' => $user->id,
+            'session_id' => $request->session()->getId(),
+            ...$described,
+            'ip' => (string) $request->ip(),
+            'place' => '',
+            'at' => now(),
+        ]);
+        SignIn::query()
+            ->where('user_id', $user->id)
+            ->orderByDesc('at')
+            ->skip(15)->take(100)
+            ->pluck('id')
+            ->each(fn (string $old) => SignIn::query()->whereKey($old)->delete());
 
         return response()->json(Identity::session($user));
     }

@@ -34,15 +34,34 @@ class SessionTest extends TestCase
             ->assertJsonPath('owner', null);
     }
 
-    public function test_owner_signs_in_by_email(): void
+    public function test_owner_signs_in_by_username(): void
     {
         $this->postJson('/api/session', [
-            'identifier' => 'owner@gmail.com',
+            'identifier' => 'twowheelszone',
             'password' => 'password',
         ])
             ->assertOk()
-            ->assertJsonPath('owner.username', 'twz.owner')
+            ->assertJsonPath('owner.username', 'twowheelszone')
             ->assertJsonPath('manager', null);
+    }
+
+    public function test_an_email_address_is_not_a_way_in(): void
+    {
+        // Accounts have no email at all now — an address is just a wrong username
+        $this->postJson('/api/session', [
+            'identifier' => 'owner@gmail.com',
+            'password' => 'password',
+        ])->assertStatus(401);
+    }
+
+    public function test_the_session_payload_carries_no_email(): void
+    {
+        $this->postJson('/api/session', [
+            'identifier' => 'marvin.deocampo',
+            'password' => 'password',
+        ])
+            ->assertOk()
+            ->assertJsonMissingPath('manager.email');
     }
 
     public function test_wrong_credentials_get_one_message_for_both_cases(): void
