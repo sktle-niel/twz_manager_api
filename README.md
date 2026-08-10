@@ -41,7 +41,13 @@ past what Hostinger runs, even when local PHP is newer.
 | `GET /api/accounts/{id}/sign-ins` | done — recorded at login, "this device" by session |
 | `GET/PATCH /api/settings/reconciliation` | done — read by both roles, written by the owner |
 | `GET /api/files/{path}` | done — stored photos, behind the session cookie |
-| still missing | `POST /api/deposits` (record with slip), managers CRUD, `PATCH /api/account`, search |
+| `GET/POST /api/managers`, `PATCH /api/managers/{id}/branch` | done (owner only) — accounts made here, occupied branches swap |
+| `POST /api/deposits` | done — slip photo hashed server-side (409 on a repeat), mismatch demands its reason |
+| still missing | `PATCH /api/account` (profile editing), search |
+
+**The house rule on money:** `expected deposit = gross profit - expenses`. The capital share
+of the takings stays in the shop to restock; what goes to the bank is the profit less the
+day's spend. Every audit row, backlog figure, and deposit match runs on it.
 
 Error bodies follow the contract: `{ message, fields? }`, one human-readable message per
 field. A 401 from any endpoint drops the frontend to its sign-in screen.

@@ -60,10 +60,12 @@ class SalesController extends Controller
             'day' => $row->day,
             'gross' => (float) $row->g,
             'profit' => (float) $row->p,
-            /* The expenses slice is not built yet: zero is the honest value,
-               and expected = gross - expenses follows it. See docs/API.md. */
+            /* Sales rows carry no expense join (the audit ledger owns that);
+               expected here follows the house rule profit - expenses with
+               expenses at zero. The figure a deposit is matched against
+               always comes from /audits. */
             'expenses' => 0.0,
-            'expected' => (float) $row->g,
+            'expected' => (float) $row->p,
         ]));
     }
 
@@ -85,8 +87,10 @@ class SalesController extends Controller
 
         $this->sync->refreshIfStale();
 
+        /* The hour-by-hour figure is PROFIT, like every headline the charts
+           draw — gross stays the deposit-reconciliation number on /audits */
         $rows = Receipt::query()
-            ->selectRaw('hour, ROUND(SUM(gross), 2) AS amount')
+            ->selectRaw('hour, ROUND(SUM(gross - cost), 2) AS amount')
             ->where('cancelled', false)
             ->whereIn('store_id', $storeIds)
             ->where('day', $request->query('day'))
