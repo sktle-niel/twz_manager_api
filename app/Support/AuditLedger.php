@@ -48,7 +48,7 @@ class AuditLedger
             return collect();
         }
         $sales = Receipt::query()
-            ->selectRaw('store_id, day, ROUND(SUM(gross), 2) AS gross')
+            ->selectRaw('store_id, day, ROUND(SUM(gross), 2) AS gross, ROUND(SUM(gross - cost), 2) AS profit')
             ->where('cancelled', false)
             ->whereIn('store_id', $storeIds)
             ->whereBetween('day', [$from, $to])
@@ -84,18 +84,18 @@ class AuditLedger
         foreach ($sales as $row) {
             $rows[$key($row->store_id, $row->day)] = [
                 'storeId' => $row->store_id, 'day' => $row->day,
-                'gross' => (float) $row->gross, 'expenses' => 0.0,
+                'gross' => (float) $row->gross, 'profit' => (float) $row->profit, 'expenses' => 0.0,
             ];
         }
         foreach ($spend as $row) {
             $slot = &$rows[$key($row->store_id, $row->day)];
-            $slot ??= ['storeId' => $row->store_id, 'day' => $row->day, 'gross' => 0.0, 'expenses' => 0.0];
+            $slot ??= ['storeId' => $row->store_id, 'day' => $row->day, 'gross' => 0.0, 'profit' => 0.0, 'expenses' => 0.0];
             $slot['expenses'] = (float) $row->spent;
             unset($slot);
         }
         foreach ($covers as $cover) {
             $slot = &$rows[$key($cover->store_id, $cover->day)];
-            $slot ??= ['storeId' => $cover->store_id, 'day' => $cover->day, 'gross' => 0.0, 'expenses' => 0.0];
+            $slot ??= ['storeId' => $cover->store_id, 'day' => $cover->day, 'gross' => 0.0, 'profit' => 0.0, 'expenses' => 0.0];
             $slot['depositId'] = $cover->deposit_id;
             unset($slot);
         }
@@ -103,13 +103,17 @@ class AuditLedger
         return collect($rows)
             ->map(function (array $row) use ($deposits, $todayFor) {
                 $deposit = isset($row['depositId']) ? $deposits->get($row['depositId']) : null;
-                $expected = round($row['gross'] - $row['expenses'], 2);
+                /* The house rule: the capital share of the takings stays in
+                   the shop to restock, so what goes to the bank is the
+                   profit minus the day's spend — never the full takings */
+                $expected = round($row['profit'] - $row['expenses'], 2);
                 $open = $row['day'] >= ($todayFor[$row['storeId']] ?? $row['day']);
 
                 return [
                     'storeId' => $row['storeId'],
                     'day' => $row['day'],
                     'gross' => $row['gross'],
+                    'profit' => $row['profit'],
                     'expenses' => $row['expenses'],
                     'expected' => $expected,
                     'deposited' => $deposit !== null ? (float) $deposit->amount : null,

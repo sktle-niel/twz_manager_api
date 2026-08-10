@@ -72,7 +72,8 @@ class SalesTest extends TestCase
                 'gross' => 1000.0,
                 'profit' => 400.0,
                 'expenses' => 0.0,
-                'expected' => 1000.0,
+                // House rule: expected follows profit, never the takings
+                'expected' => 400.0,
             ]]);
 
         // And nothing on the UTC day
@@ -151,23 +152,25 @@ class SalesTest extends TestCase
             ->assertStatus(403);
     }
 
-    public function test_hourly_sums_by_branch_local_hour(): void
+    public function test_hourly_sums_profit_by_branch_local_hour(): void
     {
+        $cost = fn (float $value) => [['quantity' => 1, 'cost' => $value, 'cost_total' => $value]];
         $this->loyverseAnswers([
             // 01:15 UTC = 09:15 Manila
-            $this->receipt(['receipt_number' => '1-0001', 'receipt_date' => '2026-08-05T01:15:00.000Z', 'total_money' => 300.0]),
-            $this->receipt(['receipt_number' => '1-0002', 'receipt_date' => '2026-08-05T01:45:00.000Z', 'total_money' => 200.0]),
+            $this->receipt(['receipt_number' => '1-0001', 'receipt_date' => '2026-08-05T01:15:00.000Z', 'total_money' => 300.0, 'line_items' => $cost(100.0)]),
+            $this->receipt(['receipt_number' => '1-0002', 'receipt_date' => '2026-08-05T01:45:00.000Z', 'total_money' => 200.0, 'line_items' => $cost(100.0)]),
             // 06:00 UTC = 14:00 Manila
-            $this->receipt(['receipt_number' => '1-0003', 'receipt_date' => '2026-08-05T06:00:00.000Z', 'total_money' => 450.0]),
+            $this->receipt(['receipt_number' => '1-0003', 'receipt_date' => '2026-08-05T06:00:00.000Z', 'total_money' => 450.0, 'line_items' => $cost(150.0)]),
         ]);
         app(ReceiptSync::class)->run(10);
 
+        // Profit per hour, not takings: (300-100)+(200-100), then 450-150
         $this->actingAs($this->manager())
             ->getJson('/api/sales/hourly?storeIds=arevalo&day=2026-08-05')
             ->assertOk()
             ->assertExactJson([
-                ['hour' => 9, 'amount' => 500.0],
-                ['hour' => 14, 'amount' => 450.0],
+                ['hour' => 9, 'amount' => 300.0],
+                ['hour' => 14, 'amount' => 300.0],
             ]);
     }
 

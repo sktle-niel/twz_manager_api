@@ -70,7 +70,9 @@ class AuditSpineTest extends TestCase
                 'storeId' => 'arevalo',
                 'day' => '2026-08-01',
                 'gross' => 5000.0,
+                'profit' => 5000.0,
                 'expenses' => 300.0,
+                // profit - expenses, the house rule (cost is zero here)
                 'expected' => 4700.0,
                 'deposited' => null,
                 'reference' => null,

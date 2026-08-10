@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\DepositController;
 use App\Http\Controllers\Api\ExpenseCategoryController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\FileController;
+use App\Http\Controllers\Api\ManagerController;
 use App\Http\Controllers\Api\ManagerPasswordController;
 use App\Http\Controllers\Api\PosSettingsController;
 use App\Http\Controllers\Api\ReconciliationController;
@@ -42,6 +43,7 @@ Route::middleware('auth:web')->group(function () {
     Route::get('/audits', [AuditController::class, 'index']);
     Route::get('/deposits/pending', [DepositController::class, 'pending']);
     Route::get('/deposits', [DepositController::class, 'index']);
+    Route::post('/deposits', [DepositController::class, 'store']);
 
     Route::get('/expenses', [ExpenseController::class, 'index']);
     Route::post('/expenses', [ExpenseController::class, 'store']);
@@ -69,6 +71,12 @@ Route::middleware('auth:web')->group(function () {
 
         Route::put('/expense-categories', [ExpenseCategoryController::class, 'replace']);
         Route::patch('/settings/reconciliation', [ReconciliationController::class, 'update']);
+
+        /* Manager accounts are made HERE by the owner — never synced from
+           Loyverse. One branch, one manager; occupied branches swap. */
+        Route::get('/managers', [ManagerController::class, 'index']);
+        Route::post('/managers', [ManagerController::class, 'store']);
+        Route::patch('/managers/{manager}/branch', [ManagerController::class, 'assign']);
 
         /* Recovery lives here now: a manager who is locked out asks the owner,
            and the owner sets a new password behind the PIN. Nothing is mailed
