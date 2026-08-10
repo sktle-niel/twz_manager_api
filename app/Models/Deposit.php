@@ -24,4 +24,19 @@ class Deposit extends Model
     {
         return $this->hasMany(DepositDay::class);
     }
+
+    /** @return array<string, mixed> The wire shape of docs/API.md */
+    public function toWire(): array
+    {
+        return [
+            'id' => $this->id,
+            'storeId' => $this->store_id,
+            'day' => $this->day,
+            'amount' => (float) $this->amount,
+            'reference' => $this->reference,
+            'covers' => $this->days->pluck('day')->sort()->values(),
+            'slipUrl' => "/api/files/{$this->slip_path}",
+            'matched' => $this->matched,
+        ];
+    }
 }

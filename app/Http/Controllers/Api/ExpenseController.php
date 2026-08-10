@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Concerns\ReadsBranchScope;
+use App\Http\Concerns\ReadsMultipart;
 use App\Http\Controllers\Controller;
 use App\Models\DepositDay;
 use App\Models\Expense;
@@ -17,24 +18,17 @@ use Illuminate\Support\Facades\Validator;
 
 /*
  * What a branch spent, logged by its manager. Photos come in as multipart
- * per docs/API.md: the fields in one `payload` JSON part, each file list
- * under its own name with a [] suffix (PHP keeps only the last of repeated
- * bare names). A day already covered by a deposit is closed — its figures
+ * per docs/API.md. A day already covered by a deposit is closed — its figures
  * are what the owner reconciled, and nothing may quietly edit them after.
  */
 class ExpenseController extends Controller
 {
-    use ReadsBranchScope;
+    use ReadsBranchScope, ReadsMultipart;
 
     /** GET /api/expenses?storeId=…&from=…&to=… */
     public function index(Request $request): JsonResponse
     {
-        $request->validate([
-            'storeId' => ['required', 'string'],
-            'from' => ['required', 'date_format:Y-m-d'],
-            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
-        ]);
-        $storeId = (string) $request->query('storeId');
+        $storeId = $this->requireStoreRange($request);
 
         if (! $this->allowed($request->user(), [$storeId])) {
             return $this->forbidden();
@@ -71,10 +65,7 @@ class ExpenseController extends Controller
                 return $this->forbidden();
             }
             if (! in_array($item['category'], $categories, true)) {
-                return response()->json(
-                    ['message' => "{$item['category']} is not a category anymore."],
-                    422,
-                );
+                return $this->unknownCategory($item['category']);
             }
             if ($this->dayClosed($item['storeId'], $item['day'])) {
                 return $this->closedDay($item['day']);
@@ -105,15 +96,9 @@ class ExpenseController extends Controller
     /** PATCH /api/expenses/{expense} — JSON, or multipart when photos change */
     public function update(Request $request, string $expense): JsonResponse
     {
-        $found = Expense::query()->with('photos')->find($expense);
-        if ($found === null) {
-            return response()->json(['message' => 'That expense is no longer there.'], 404);
-        }
-        if (! $this->allowed($request->user(), [$found->store_id])) {
-            return $this->forbidden();
-        }
-        if ($this->dayClosed($found->store_id, $found->day)) {
-            return $this->closedDay($found->day);
+        $found = $this->editable($request, $expense);
+        if ($found instanceof JsonResponse) {
+            return $found;
         }
 
         $patch = $request->isJson() ? $request->all() : $this->payload($request);
@@ -126,10 +111,7 @@ class ExpenseController extends Controller
 
         if (isset($patch['category'])
             && ! ExpenseCategory::query()->where('name', $patch['category'])->exists()) {
-            return response()->json(
-                ['message' => "{$patch['category']} is not a category anymore."],
-                422,
-            );
+            return $this->unknownCategory($patch['category']);
         }
 
         $found->fill([
@@ -159,15 +141,9 @@ class ExpenseController extends Controller
     /** DELETE /api/expenses/{expense} */
     public function destroy(Request $request, string $expense): Response|JsonResponse
     {
-        $found = Expense::query()->with('photos')->find($expense);
-        if ($found === null) {
-            return response()->json(['message' => 'That expense is no longer there.'], 404);
-        }
-        if (! $this->allowed($request->user(), [$found->store_id])) {
-            return $this->forbidden();
-        }
-        if ($this->dayClosed($found->store_id, $found->day)) {
-            return $this->closedDay($found->day);
+        $found = $this->editable($request, $expense);
+        if ($found instanceof JsonResponse) {
+            return $found;
         }
 
         foreach ($found->photos as $photo) {
@@ -179,24 +155,24 @@ class ExpenseController extends Controller
         return response()->noContent();
     }
 
-    /** @return array<string, mixed> The `payload` part, parsed exactly like a JSON body */
-    private function payload(Request $request): array
+    /**
+     * The guards every mutation of an existing expense shares: it exists,
+     * it is the caller's branch, and its day is not sealed by a deposit.
+     */
+    private function editable(Request $request, string $id): Expense|JsonResponse
     {
-        $raw = (string) $request->input('payload', '');
-        $decoded = json_decode($raw, true);
-
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    /** @return list<UploadedFile> */
-    private function files(Request $request, string $key): array
-    {
-        $found = $request->file($key);
+        $found = Expense::query()->with('photos')->find($id);
         if ($found === null) {
-            return [];
+            return $this->notFound('That expense is no longer there.');
+        }
+        if (! $this->allowed($request->user(), [$found->store_id])) {
+            return $this->forbidden();
+        }
+        if ($this->dayClosed($found->store_id, $found->day)) {
+            return $this->closedDay($found->day);
         }
 
-        return is_array($found) ? array_values($found) : [$found];
+        return $found;
     }
 
     private function attach(Expense $expense, UploadedFile $file): void
@@ -211,6 +187,11 @@ class ExpenseController extends Controller
     private function dayClosed(string $storeId, string $day): bool
     {
         return DepositDay::query()->where('store_id', $storeId)->where('day', $day)->exists();
+    }
+
+    private function unknownCategory(string $name): JsonResponse
+    {
+        return response()->json(['message' => "{$name} is not a category anymore."], 422);
     }
 
     private function closedDay(string $day): JsonResponse

@@ -8,7 +8,6 @@ use App\Models\Receipt;
 use App\Services\Loyverse\ReceiptSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 /*
  * The sales figures, served from the local receipts table. Every read first
@@ -30,15 +29,7 @@ class SalesController extends Controller
     /** GET /api/sales/daily?storeIds=…&storeIds=…&from=…&to=… */
     public function daily(Request $request): JsonResponse
     {
-        $storeIds = $this->storeIds($request);
-        Validator::make(
-            [...$request->only(['from', 'to']), 'storeIds' => $storeIds],
-            [
-                'storeIds' => ['required', 'array', 'min:1'],
-                'from' => ['required', 'date_format:Y-m-d'],
-                'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
-            ],
-        )->validate();
+        $storeIds = $this->requireStores($request, self::rangeRules());
 
         if (! $this->allowed($request->user(), $storeIds)) {
             return $this->forbidden();
@@ -72,14 +63,7 @@ class SalesController extends Controller
     /** GET /api/sales/hourly?storeIds=…&day=… */
     public function hourly(Request $request): JsonResponse
     {
-        $storeIds = $this->storeIds($request);
-        Validator::make(
-            [...$request->only(['day']), 'storeIds' => $storeIds],
-            [
-                'storeIds' => ['required', 'array', 'min:1'],
-                'day' => ['required', 'date_format:Y-m-d'],
-            ],
-        )->validate();
+        $storeIds = $this->requireStores($request, ['day' => ['required', 'date_format:Y-m-d']]);
 
         if (! $this->allowed($request->user(), $storeIds)) {
             return $this->forbidden();

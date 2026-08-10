@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Concerns\ChecksResetPin;
 use App\Http\Controllers\Controller;
 use App\Support\ResetPin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\RateLimiter;
 
 /*
  * The owner's view of the reset PIN. The PIN itself is never sent back — only
@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\RateLimiter;
  */
 class ResetPinController extends Controller
 {
+    use ChecksResetPin;
+
     /** GET /api/settings/reset-pin */
     public function show(): JsonResponse
     {
@@ -38,28 +40,16 @@ class ResetPinController extends Controller
         /* Changing the PIN needs the old one, and guessing at it here would be
            the same attack as guessing at it on the reset form — so it shares
            the same counter. */
-        $throttleKey = 'reset-pin:'.$request->user()->id;
-        $allowed = (int) config('twz.reset_pin_attempts');
-
-        if (RateLimiter::tooManyAttempts($throttleKey, $allowed)) {
-            $minutes = (int) ceil(RateLimiter::availableIn($throttleKey) / 60);
-
-            return response()->json(
-                ['message' => "Too many wrong PINs. Try again in {$minutes} minutes."],
-                429,
-            );
+        $denied = $this->resetPinGate(
+            (string) $request->user()->id,
+            $fields['currentPin'],
+            'currentPin',
+            'That is not the current PIN.',
+        );
+        if ($denied !== null) {
+            return $denied;
         }
 
-        if (! ResetPin::matches($fields['currentPin'])) {
-            RateLimiter::hit($throttleKey, (int) config('twz.reset_pin_lockout_seconds'));
-
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['currentPin' => 'That is not the current PIN.'],
-            ], 422);
-        }
-
-        RateLimiter::clear($throttleKey);
         ResetPin::change($fields['newPin']);
 
         return response()->noContent();
