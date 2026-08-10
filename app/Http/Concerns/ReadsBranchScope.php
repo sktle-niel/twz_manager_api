@@ -3,8 +3,8 @@
 namespace App\Http\Concerns;
 
 use App\Models\User;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 /*
  * The two facts every branch-scoped read shares.
@@ -18,6 +18,40 @@ use Illuminate\Http\Request;
  */
 trait ReadsBranchScope
 {
+    /** Validate the single-store day-range read and hand back its storeId. */
+    private function requireStoreRange(Request $request): string
+    {
+        $request->validate(['storeId' => ['required', 'string'], ...self::rangeRules()]);
+
+        return (string) $request->query('storeId');
+    }
+
+    /**
+     * Validate a repeated-storeIds read plus the given query rules.
+     *
+     * @param  array<string, list<string>>  $rules
+     * @return list<string>
+     */
+    private function requireStores(Request $request, array $rules): array
+    {
+        $storeIds = $this->storeIds($request);
+        Validator::make(
+            [...$request->only(array_keys($rules)), 'storeIds' => $storeIds],
+            ['storeIds' => ['required', 'array', 'min:1'], ...$rules],
+        )->validate();
+
+        return $storeIds;
+    }
+
+    /** @return array<string, list<string>> The from/to pair every range read validates */
+    private static function rangeRules(): array
+    {
+        return [
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ];
+    }
+
     /** @return list<string> */
     private function storeIds(Request $request, string $key = 'storeIds'): array
     {
@@ -43,10 +77,5 @@ trait ReadsBranchScope
         }
 
         return $storeIds === [$user->store_id];
-    }
-
-    private function forbidden(): JsonResponse
-    {
-        return response()->json(['message' => 'You do not have access to that.'], 403);
     }
 }

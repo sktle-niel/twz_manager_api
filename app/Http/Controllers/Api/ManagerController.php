@@ -44,22 +44,13 @@ class ManagerController extends Controller
 
         $username = mb_strtolower(trim($data['username']));
         if (User::query()->whereRaw('lower(username) = ?', [$username])->exists()) {
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['username' => 'That username is taken.'],
-            ], 422);
+            return $this->fieldErrors(['username' => 'That username is taken.']);
         }
         if (Store::query()->whereKey($data['storeId'])->doesntExist()) {
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['storeId' => 'That branch is no longer there.'],
-            ], 422);
+            return $this->fieldErrors(['storeId' => 'That branch is no longer there.']);
         }
         if (User::query()->where('role', User::ROLE_MANAGER)->where('store_id', $data['storeId'])->exists()) {
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['storeId' => 'That branch already has a manager.'],
-            ], 422);
+            return $this->fieldErrors(['storeId' => 'That branch already has a manager.']);
         }
 
         $manager = User::query()->create([
@@ -81,7 +72,7 @@ class ManagerController extends Controller
 
         $moving = User::query()->where('role', User::ROLE_MANAGER)->find($manager);
         if ($moving === null) {
-            return response()->json(['message' => 'That account is no longer there.'], 404);
+            return $this->notFound('That account is no longer there.');
         }
         if (Store::query()->whereKey($data['storeId'])->doesntExist()) {
             return response()->json(['message' => 'That branch is no longer there.'], 422);

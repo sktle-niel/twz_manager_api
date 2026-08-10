@@ -80,22 +80,25 @@ class AuditLedger
 
         $rows = [];
         $key = fn (string $store, string $day) => "{$store}|{$day}";
+        $blank = fn (string $store, string $day) => [
+            'storeId' => $store, 'day' => $day, 'gross' => 0.0, 'profit' => 0.0, 'expenses' => 0.0,
+        ];
 
         foreach ($sales as $row) {
             $rows[$key($row->store_id, $row->day)] = [
-                'storeId' => $row->store_id, 'day' => $row->day,
-                'gross' => (float) $row->gross, 'profit' => (float) $row->profit, 'expenses' => 0.0,
+                ...$blank($row->store_id, $row->day),
+                'gross' => (float) $row->gross, 'profit' => (float) $row->profit,
             ];
         }
         foreach ($spend as $row) {
             $slot = &$rows[$key($row->store_id, $row->day)];
-            $slot ??= ['storeId' => $row->store_id, 'day' => $row->day, 'gross' => 0.0, 'profit' => 0.0, 'expenses' => 0.0];
+            $slot ??= $blank($row->store_id, $row->day);
             $slot['expenses'] = (float) $row->spent;
             unset($slot);
         }
         foreach ($covers as $cover) {
             $slot = &$rows[$key($cover->store_id, $cover->day)];
-            $slot ??= ['storeId' => $cover->store_id, 'day' => $cover->day, 'gross' => 0.0, 'profit' => 0.0, 'expenses' => 0.0];
+            $slot ??= $blank($cover->store_id, $cover->day);
             $slot['depositId'] = $cover->deposit_id;
             unset($slot);
         }

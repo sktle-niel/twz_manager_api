@@ -33,10 +33,7 @@ class AccountPasswordController extends Controller
         $user = $request->user();
 
         if (! Hash::check($fields['current'], $user->password)) {
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['current' => 'That is not your current password.'],
-            ], 422);
+            return $this->fieldErrors(['current' => 'That is not your current password.']);
         }
 
         $user->forceFill([

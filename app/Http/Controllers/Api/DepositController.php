@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Concerns\ReadsBranchScope;
+use App\Http\Concerns\ReadsMultipart;
 use App\Http\Controllers\Controller;
 use App\Models\Deposit;
 use App\Models\DepositDay;
@@ -22,19 +23,14 @@ use Illuminate\Support\Facades\Validator;
  */
 class DepositController extends Controller
 {
-    use ReadsBranchScope;
+    use ReadsBranchScope, ReadsMultipart;
 
     public function __construct(private readonly AuditLedger $ledger) {}
 
     /** GET /api/deposits?storeId=…&from=…&to=… */
     public function index(Request $request): JsonResponse
     {
-        $request->validate([
-            'storeId' => ['required', 'string'],
-            'from' => ['required', 'date_format:Y-m-d'],
-            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
-        ]);
-        $storeId = (string) $request->query('storeId');
+        $storeId = $this->requireStoreRange($request);
 
         if (! $this->allowed($request->user(), [$storeId])) {
             return $this->forbidden();
@@ -47,16 +43,7 @@ class DepositController extends Controller
             ->orderByDesc('day')
             ->get();
 
-        return response()->json($deposits->map(fn (Deposit $deposit) => [
-            'id' => $deposit->id,
-            'storeId' => $deposit->store_id,
-            'day' => $deposit->day,
-            'amount' => (float) $deposit->amount,
-            'reference' => $deposit->reference,
-            'covers' => $deposit->days->pluck('day')->sort()->values(),
-            'slipUrl' => "/api/files/{$deposit->slip_path}",
-            'matched' => $deposit->matched,
-        ]));
+        return response()->json($deposits->map(fn (Deposit $deposit) => $deposit->toWire()));
     }
 
     /** GET /api/deposits/pending?storeId=… — audited days still uncovered, oldest first */
@@ -92,20 +79,18 @@ class DepositController extends Controller
 
         $slip = $this->files($request, 'slip')[0] ?? null;
         if ($slip === null) {
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['slip' => 'Attach the deposit slip photo.'],
-            ], 422);
+            return $this->fieldErrors(['slip' => 'Attach the deposit slip photo.']);
         }
 
         /* The one-photo-one-deposit rule is the backend's: the file itself is
            hashed here, whatever fingerprint the client offered */
         $sha = hash_file('sha256', $slip->getRealPath());
         if ($sha !== false && Deposit::query()->where('slip_sha', $sha)->exists()) {
-            return response()->json([
-                'message' => 'This slip photo already covers a deposit.',
-                'fields' => ['slip' => 'This photo is already filed. Take a photo of the new slip.'],
-            ], 409);
+            return $this->fieldErrors(
+                ['slip' => 'This photo is already filed. Take a photo of the new slip.'],
+                409,
+                'This slip photo already covers a deposit.',
+            );
         }
 
         /* Every covered day must actually be waiting: audited, past, and not
@@ -129,12 +114,32 @@ class DepositController extends Controller
         $matched = (int) round($amount * 100) === (int) round($expected * 100);
 
         if (! $matched && trim((string) ($payload['discrepancyReason'] ?? '')) === '') {
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['reason' => "Explain the {$this->pesos(abs($amount - $expected))} difference before recording this."],
-            ], 422);
+            return $this->fieldErrors([
+                'reason' => "Explain the {$this->pesos(abs($amount - $expected))} difference before recording this.",
+            ]);
         }
 
+        $deposit = $this->record($request, $payload, $slip, $sha, $covers, $amount, $matched);
+
+        return response()->json($deposit->toWire());
+    }
+
+    /**
+     * Persist what the guards above already accepted: the deposit row, one
+     * DepositDay per covered day, and any discrepancy-proof photos.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $covers
+     */
+    private function record(
+        Request $request,
+        array $payload,
+        UploadedFile $slip,
+        string|false $sha,
+        array $covers,
+        float $amount,
+        bool $matched,
+    ): Deposit {
         $slipPath = $slip->store("receipts/slips/{$payload['storeId']}");
         $deposit = Deposit::query()->create([
             'store_id' => $payload['storeId'],
@@ -146,6 +151,7 @@ class DepositController extends Controller
             'matched' => $matched,
             'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),
         ]);
+
         foreach ($covers as $day) {
             DepositDay::query()->create([
                 'deposit_id' => $deposit->id,
@@ -160,35 +166,7 @@ class DepositController extends Controller
             }
         }
 
-        return response()->json([
-            'id' => $deposit->id,
-            'storeId' => $deposit->store_id,
-            'day' => $deposit->day,
-            'amount' => (float) $deposit->amount,
-            'reference' => $deposit->reference,
-            'covers' => collect($covers)->sort()->values(),
-            'slipUrl' => "/api/files/{$deposit->slip_path}",
-            'matched' => $deposit->matched,
-        ]);
-    }
-
-    /** @return array<string, mixed> The `payload` part, parsed exactly like a JSON body */
-    private function payload(Request $request): array
-    {
-        $decoded = json_decode((string) $request->input('payload', ''), true);
-
-        return is_array($decoded) ? $decoded : [];
-    }
-
-    /** @return list<UploadedFile> */
-    private function files(Request $request, string $key): array
-    {
-        $found = $request->file($key);
-        if ($found === null) {
-            return [];
-        }
-
-        return is_array($found) ? array_values($found) : [$found];
+        return $deposit->load('days');
     }
 
     private function pesos(float $value): string

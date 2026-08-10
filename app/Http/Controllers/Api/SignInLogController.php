@@ -14,7 +14,7 @@ class SignInLogController extends Controller
     {
         $user = $request->user();
         if (! $user->isOwner() && (string) $user->id !== $accountId) {
-            return response()->json(['message' => 'You do not have access to that.'], 403);
+            return $this->forbidden();
         }
 
         $current = $request->session()->getId();

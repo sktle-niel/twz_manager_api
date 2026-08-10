@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Concerns\ChecksResetPin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Support\ResetPin;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
@@ -23,6 +22,8 @@ use Illuminate\Validation\Rules\Password as PasswordRule;
  */
 class ManagerPasswordController extends Controller
 {
+    use ChecksResetPin;
+
     /** PUT /api/managers/{manager}/password */
     public function update(Request $request, string $manager): Response|JsonResponse
     {
@@ -31,34 +32,20 @@ class ManagerPasswordController extends Controller
             'password' => ['required', 'string', PasswordRule::min(8)],
         ]);
 
-        $owner = $request->user();
-        $throttleKey = 'reset-pin:'.$owner->id;
-        $allowed = (int) config('twz.reset_pin_attempts');
-
-        if (RateLimiter::tooManyAttempts($throttleKey, $allowed)) {
-            $minutes = (int) ceil(RateLimiter::availableIn($throttleKey) / 60);
-
-            return response()->json(
-                ['message' => "Too many wrong PINs. Try again in {$minutes} minutes."],
-                429,
-            );
+        $denied = $this->resetPinGate(
+            (string) $request->user()->id,
+            $fields['pin'],
+            'pin',
+            'That is not the PIN.',
+        );
+        if ($denied !== null) {
+            return $denied;
         }
-
-        if (! ResetPin::matches($fields['pin'])) {
-            RateLimiter::hit($throttleKey, (int) config('twz.reset_pin_lockout_seconds'));
-
-            return response()->json([
-                'message' => 'Check the highlighted fields.',
-                'fields' => ['pin' => 'That is not the PIN.'],
-            ], 422);
-        }
-
-        RateLimiter::clear($throttleKey);
 
         $target = User::query()->find($manager);
 
         if ($target === null) {
-            return response()->json(['message' => 'That account is no longer there.'], 404);
+            return $this->notFound('That account is no longer there.');
         }
 
         /* The owner's own password is deliberately not resettable from inside
