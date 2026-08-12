@@ -4,7 +4,52 @@ One origin serves everything: this Laravel app answers `/api/*`, and every
 other path returns the staged PWA build (`public/app.html`). Same-origin
 means the session cookie just works — no CORS, no SameSite tuning.
 
-## One-time setup (hPanel)
+Two ways in. **Method A** needs only the hPanel File Manager and a browser —
+no SSH, no composer on the server. **Method B** (further down) is the
+git + SSH flow.
+
+## Method A — File Manager only
+
+**Build the package on the dev machine** (already scripted pieces):
+
+1. In the frontend repo: `npm run stage` — builds and copies the PWA into
+   this repo's `public/`.
+2. Copy this whole repo (INCLUDING `vendor/`, EXCLUDING `.git`, `tests`,
+   `storage/logs`, `storage/framework/{cache/data,sessions,views}` contents)
+   into a folder named `app`, replace `.env` with a production one (APP_KEY
+   generated locally, DB placeholders, the Loyverse token, the VAPID keys,
+   and a random `SETUP_KEY`), and zip the `app` folder.
+
+**On Hostinger:**
+
+3. hPanel → the website → **Advanced → PHP Configuration** → PHP **8.3**.
+4. **Databases → Management** → create database + user + password.
+5. **Files → File Manager** → open `domains/YOURDOMAIN.com/` → upload the
+   zip → right-click → **Extract**. You now have `…/app/` with `public/`
+   inside.
+6. Point the site's **document root** at `domains/YOURDOMAIN.com/app/public`
+   (or create a subdomain with that custom folder).
+7. In File Manager, open `app/.env` → fill in `APP_URL` and the three `DB_*`
+   placeholders → save.
+8. In a browser, visit `https://YOURDOMAIN/setup/THE_SETUP_KEY?start=YYYY-MM-DD`
+   (the exact URL is written inside `.env` beside `SETUP_KEY`). One visit
+   migrates, seeds, sets the ledger's start day, and caches — the JSON
+   answer lists what happened.
+9. Back in File Manager, **delete the two SETUP_KEY lines** from `.env`.
+10. hPanel → **Advanced → Cron Jobs** → one entry:
+    `* * * * * /usr/bin/php /home/USERNAME/domains/YOURDOMAIN.com/app/artisan schedule:run >> /dev/null 2>&1`
+11. Run the smoke checks at the bottom, then **change every seeded password
+    and the reset PIN** inside the app.
+
+**Later updates without SSH:** re-run `npm run stage`, then upload just the
+changed pieces through File Manager — `public/app.html` + `public/assets/`
+for frontend changes; the changed `app/…` PHP files (plus visiting the setup
+URL again if a migration shipped — re-add SETUP_KEY for the visit, delete
+after).
+
+## Method B — SSH + git
+
+### One-time setup (hPanel)
 
 1. **PHP version**: set the site to **PHP 8.3** (Websites → PHP configuration).
    Confirm extensions: `openssl`, `pdo_mysql`, `curl`, `mbstring` (all present
@@ -15,7 +60,7 @@ means the session cookie just works — no CORS, no SameSite tuning.
    `.htaccess` in `public/` does the rest under LiteSpeed.
 4. **SSH**: enable SSH access (Advanced → SSH) — everything below runs there.
 
-## First deploy
+### First deploy
 
 ```bash
 # 1. Get the code (or upload a zip and unzip)
@@ -65,7 +110,7 @@ php artisan config:cache && php artisan route:cache
 php artisan twz:sync-sales && php artisan twz:sync-catalog
 ```
 
-## Staging the frontend
+### Staging the frontend
 
 From the **frontend repo** on the dev machine:
 
@@ -83,7 +128,7 @@ scp -r public/app.html public/assets public/*.png public/*.webp \
     public/manifest.webmanifest public/sw.js  USER@HOST:~/app/public/
 ```
 
-## Every later deploy
+### Every later deploy
 
 ```bash
 git pull

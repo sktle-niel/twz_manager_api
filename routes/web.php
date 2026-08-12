@@ -1,7 +1,11 @@
 <?php
 
+use App\Http\Controllers\SetupController;
 use App\Http\Controllers\SpaController;
 use Illuminate\Support\Facades\Route;
+
+/* The browser-run installer — exists only while .env carries a SETUP_KEY */
+Route::get('/setup/{key}', SetupController::class);
 
 /*
  * The whole web side is the PWA: the staged build answers every path the API

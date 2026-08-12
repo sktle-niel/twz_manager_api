@@ -53,4 +53,19 @@ return [
 
     'reset_pin_lockout_seconds' => 900,
 
+    /*
+    |--------------------------------------------------------------------------
+    | One-time setup key
+    |--------------------------------------------------------------------------
+    |
+    | Lets a file-manager-only deploy finish itself from the browser: visiting
+    | /setup/{key} runs the migrations, seeds a fresh database, and sets the
+    | ledger's start day — the work SSH would otherwise do. Empty (the
+    | default) means the route does not exist. Set it in the deployed .env,
+    | run setup once, then delete the line.
+    |
+    */
+
+    'setup_key' => (string) env('SETUP_KEY', ''),
+
 ];
