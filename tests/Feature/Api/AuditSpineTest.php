@@ -72,9 +72,13 @@ class AuditSpineTest extends TestCase
                 'gross' => 5000.0,
                 'profit' => 5000.0,
                 'expenses' => 300.0,
-                // profit - expenses, the house rule (cost is zero here)
+                'advances' => 0.0,
+                // profit - expenses - advances, the house rule (cost is zero here)
                 'expected' => 4700.0,
                 'deposited' => null,
+                'online' => null,
+                'depositCovers' => null,
+                'depositExpected' => null,
                 'reference' => null,
                 'slipUrl' => null,
                 'status' => 'pending',
@@ -216,7 +220,7 @@ class AuditSpineTest extends TestCase
             ]]),
         ], ['Accept' => 'application/json'])
             ->assertStatus(422)
-            ->assertJsonPath('message', '2026-08-01 is already covered by a deposit, so its expenses are final.');
+            ->assertJsonPath('message', '2026-08-01 is already covered by a deposit, so its figures are final.');
     }
 
     public function test_a_dead_category_is_refused_in_words(): void

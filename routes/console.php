@@ -9,6 +9,18 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 /* The receipts ledger keeps itself current: one cron entry on the server
-   (see README) runs everything scheduled here. withoutOverlapping, because
-   a backfill still walking its pages must not race a second copy. */
-Schedule::command('twz:sync-sales')->everyFiveMinutes()->withoutOverlapping();
+   (see README) runs everything scheduled here. Every minute, so the copy is
+   always inside the sales reads' freshness window and a page view almost
+   never has to top up for itself — an incremental run is one or two requests
+   against a budget of 240 per five minutes. withoutOverlapping, because a
+   backfill still walking its pages must not race a second copy. */
+Schedule::command('twz:sync-sales')->everyMinute()->withoutOverlapping();
+
+/* The item catalog changes rarely; a half-hour-old copy is plenty for the
+   sales-filter search, and the walk is minutes long — scheduler work, never
+   a page view's */
+Schedule::command('twz:sync-catalog')->everyThirtyMinutes()->withoutOverlapping();
+
+/* Reminders fire on each branch's own clock; hourly is enough resolution,
+   and the command's own once-per-day cache absorbs the repetition */
+Schedule::command('twz:send-reminders')->hourly()->withoutOverlapping();

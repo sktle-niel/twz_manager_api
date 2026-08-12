@@ -52,4 +52,9 @@ return [
     'sync_pages_inline' => 5,
     'sync_pages_command' => 200,
 
+    /* Shelf life of the walked item-catalog copy the sales-filter search
+       reads. The scheduler rewalks every thirty minutes; this only has to
+       outlive a few missed runs, not stay fresh by itself. */
+    'catalog_ttl' => 86400,
+
 ];

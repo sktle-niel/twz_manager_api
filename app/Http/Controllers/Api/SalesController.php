@@ -10,10 +10,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /*
- * The sales figures, served from the local receipts table. Every read first
- * offers the sync a chance to top up (cheap when fresh, bounded when stale,
- * never fatal), so the numbers track the tills within a couple of minutes
- * without any page ever waiting on Loyverse being reachable.
+ * The sales figures, served from the local receipts table. Every read offers
+ * the sync a chance to top up, but the top-up runs after the response has
+ * gone out — the page always gets the local copy at database speed, and the
+ * numbers track the tills within a couple of minutes without any read ever
+ * waiting on Loyverse being reachable.
  *
  * `gross` is money taken — the figure a bank deposit must match. `profit` is
  * gross minus what the goods cost the shop (net of refunds): the number the

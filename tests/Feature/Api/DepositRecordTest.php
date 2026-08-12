@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Deposit;
 use App\Models\Expense;
 use App\Models\Receipt;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -102,6 +103,62 @@ class DepositRecordTest extends TestCase
         $deposit = Deposit::query()->sole();
         $this->assertFalse($deposit->matched);
         $this->assertSame('Paid the parts courier in cash, receipt attached.', $deposit->discrepancy_reason);
+    }
+
+    public function test_a_deposit_cannot_cover_more_days_than_the_batching_window(): void
+    {
+        // A second waiting day: takings 3000, cost 1000 — expected 2000
+        Receipt::query()->create([
+            'receipt_number' => 'r-2', 'store_id' => 'arevalo', 'type' => 'SALE',
+            'day' => '2026-08-02', 'hour' => 11, 'receipt_date' => '2026-08-02 03:00:00',
+            'gross' => 3000.0, 'cost' => 1000.0, 'cancelled' => false,
+            'loyverse_updated_at' => now(),
+        ]);
+
+        Setting::write('batch_window_days', '1');
+        $this->record([
+            'day' => '2026-08-03',
+            'amount' => 4700.0,
+            'covers' => ['2026-08-01', '2026-08-02'],
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'One deposit may cover at most 1 day.')
+            ->assertJsonStructure(['fields' => ['days']]);
+        $this->assertSame(0, Deposit::query()->count());
+
+        // Widened, the same two-day deposit goes through and matches
+        Setting::write('batch_window_days', '3');
+        $this->record([
+            'day' => '2026-08-03',
+            'amount' => 4700.0,
+            'covers' => ['2026-08-01', '2026-08-02'],
+        ])
+            ->assertOk()
+            ->assertJsonPath('matched', true);
+    }
+
+    public function test_online_payments_count_toward_the_match(): void
+    {
+        // 2200 cash on the slip plus 500 that came in through GCash answers
+        // the 2700 expected — an online sale is not a shortfall
+        $this->record(['amount' => 2200.0, 'online' => 500.0])
+            ->assertOk()
+            ->assertJsonPath('matched', true)
+            ->assertJsonPath('amount', 2200)
+            ->assertJsonPath('online', 500);
+
+        $this->assertTrue(Deposit::query()->sole()->matched);
+    }
+
+    public function test_cash_plus_online_short_of_expected_still_needs_its_reason(): void
+    {
+        // 2200 + 300 = 2500 against 2700 — declaring online money does not
+        // waive the explanation for what is still missing
+        $this->record(['amount' => 2200.0, 'online' => 300.0])
+            ->assertStatus(422)
+            ->assertJsonStructure(['fields' => ['reason']]);
+
+        $this->assertSame(0, Deposit::query()->count());
     }
 
     public function test_the_same_slip_photo_cannot_cover_two_deposits(): void

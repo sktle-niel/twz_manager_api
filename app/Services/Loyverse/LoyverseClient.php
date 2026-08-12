@@ -57,6 +57,17 @@ class LoyverseClient
         return $this->get('/receipts', [...$query, 'limit' => $query['limit'] ?? 250]);
     }
 
+    /**
+     * GET /items — one page of the catalog, for the sales-filter search's
+     * cached walk (the caller owns the cursor).
+     *
+     * @param  array<string, mixed>  $query
+     */
+    public function items(array $query): array
+    {
+        return $this->get('/items', [...$query, 'limit' => $query['limit'] ?? 250]);
+    }
+
     /** Requests still available in the current window */
     public function remainingBudget(): int
     {

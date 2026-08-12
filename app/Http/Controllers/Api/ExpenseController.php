@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Concerns\GuardsReconciledDays;
 use App\Http\Concerns\ReadsBranchScope;
 use App\Http\Concerns\ReadsMultipart;
 use App\Http\Controllers\Controller;
-use App\Models\DepositDay;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\ExpensePhoto;
@@ -23,7 +23,7 @@ use Illuminate\Support\Facades\Validator;
  */
 class ExpenseController extends Controller
 {
-    use ReadsBranchScope, ReadsMultipart;
+    use GuardsReconciledDays, ReadsBranchScope, ReadsMultipart;
 
     /** GET /api/expenses?storeId=…&from=…&to=… */
     public function index(Request $request): JsonResponse
@@ -184,21 +184,8 @@ class ExpenseController extends Controller
         ExpensePhoto::query()->create(['expense_id' => $expense->id, 'path' => $path]);
     }
 
-    private function dayClosed(string $storeId, string $day): bool
-    {
-        return DepositDay::query()->where('store_id', $storeId)->where('day', $day)->exists();
-    }
-
     private function unknownCategory(string $name): JsonResponse
     {
         return response()->json(['message' => "{$name} is not a category anymore."], 422);
-    }
-
-    private function closedDay(string $day): JsonResponse
-    {
-        return response()->json(
-            ['message' => "{$day} is already covered by a deposit, so its expenses are final."],
-            422,
-        );
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Advance;
 use App\Models\Deposit;
 use App\Models\DepositDay;
 use App\Models\Expense;
@@ -62,6 +63,13 @@ class AuditLedger
             ->groupBy('store_id', 'day')
             ->get();
 
+        $drawn = Advance::query()
+            ->selectRaw('store_id, day, ROUND(SUM(amount), 2) AS advanced')
+            ->whereIn('store_id', $storeIds)
+            ->whereBetween('day', [$from, $to])
+            ->groupBy('store_id', 'day')
+            ->get();
+
         $covers = DepositDay::query()
             ->whereIn('store_id', $storeIds)
             ->whereBetween('day', [$from, $to])
@@ -70,6 +78,14 @@ class AuditLedger
             ->whereIn('id', $covers->pluck('deposit_id')->unique())
             ->get()
             ->keyBy('id');
+        /* Every day each of those deposits covers — deliberately NOT bounded
+           by the queried range, because a deposit's batch does not stop at
+           the edge of whatever window the page happens to be looking at */
+        $spans = DepositDay::query()
+            ->whereIn('deposit_id', $deposits->keys())
+            ->orderBy('day')
+            ->get()
+            ->groupBy('deposit_id');
 
         /* Today is per branch: the same instant is the 6th in Palawan and
            still the 5th somewhere else. Never one clock for every store. */
@@ -81,7 +97,8 @@ class AuditLedger
         $rows = [];
         $key = fn (string $store, string $day) => "{$store}|{$day}";
         $blank = fn (string $store, string $day) => [
-            'storeId' => $store, 'day' => $day, 'gross' => 0.0, 'profit' => 0.0, 'expenses' => 0.0,
+            'storeId' => $store, 'day' => $day,
+            'gross' => 0.0, 'profit' => 0.0, 'expenses' => 0.0, 'advances' => 0.0,
         ];
 
         foreach ($sales as $row) {
@@ -96,6 +113,12 @@ class AuditLedger
             $slot['expenses'] = (float) $row->spent;
             unset($slot);
         }
+        foreach ($drawn as $row) {
+            $slot = &$rows[$key($row->store_id, $row->day)];
+            $slot ??= $blank($row->store_id, $row->day);
+            $slot['advances'] = (float) $row->advanced;
+            unset($slot);
+        }
         foreach ($covers as $cover) {
             $slot = &$rows[$key($cover->store_id, $cover->day)];
             $slot ??= $blank($cover->store_id, $cover->day);
@@ -104,12 +127,14 @@ class AuditLedger
         }
 
         return collect($rows)
-            ->map(function (array $row) use ($deposits, $todayFor) {
+            ->map(function (array $row) use ($deposits, $spans, $todayFor) {
                 $deposit = isset($row['depositId']) ? $deposits->get($row['depositId']) : null;
                 /* The house rule: the capital share of the takings stays in
                    the shop to restock, so what goes to the bank is the
-                   profit minus the day's spend — never the full takings */
-                $expected = round($row['profit'] - $row['expenses'], 2);
+                   profit minus the day's spend — never the full takings.
+                   Advances net out too: cash an employee drew is out of the
+                   drawer on this day, whoever eventually pays it back. */
+                $expected = round($row['profit'] - $row['expenses'] - $row['advances'], 2);
                 $open = $row['day'] >= ($todayFor[$row['storeId']] ?? $row['day']);
 
                 return [
@@ -118,8 +143,18 @@ class AuditLedger
                     'gross' => $row['gross'],
                     'profit' => $row['profit'],
                     'expenses' => $row['expenses'],
+                    'advances' => $row['advances'],
                     'expected' => $expected,
                     'deposited' => $deposit !== null ? (float) $deposit->amount : null,
+                    'online' => $deposit !== null ? (float) $deposit->online : null,
+                    /* The batch the deposit answers: every day it covers, and
+                       the expected sum it was judged against when recorded.
+                       Without these, a six-day deposit shown on one day's row
+                       reads as a wild over-deposit. */
+                    'depositCovers' => $deposit !== null
+                        ? $spans->get($deposit->id)?->pluck('day')->values() ?? collect()
+                        : null,
+                    'depositExpected' => $deposit?->expected !== null ? (float) $deposit->expected : null,
                     'reference' => $deposit?->reference,
                     'slipUrl' => $deposit !== null ? "/api/files/{$deposit->slip_path}" : null,
                     'status' => match (true) {
