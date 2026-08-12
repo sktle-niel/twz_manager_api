@@ -49,6 +49,11 @@ php artisan migrate --force
 # 5. Accounts and settings — seed, then set real passwords and the reset PIN
 php artisan db:seed --force
 
+# 5b. The ledger's start day — the date reconciliation begins. Without it,
+#     the 90-day Loyverse backfill would surface three months of "pending
+#     deposit" backlog on day one. Set it to the go-live date:
+php artisan tinker --execute="App\Models\Setting::write('audit_start_day', '2026-08-13');"
+
 # 6. Cache the boot work (rerun after every deploy)
 php artisan config:cache && php artisan route:cache
 
