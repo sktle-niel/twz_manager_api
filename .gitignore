@@ -25,3 +25,12 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# The staged PWA build (frontend repo's `npm run stage` puts it here)
+/public/app.html
+/public/assets
+/public/manifest.webmanifest
+/public/sw.js
+/public/*.png
+/public/*.webp
+/public/*.svg
