@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['store_id', 'day', 'amount', 'reference', 'slip_path', 'slip_sha', 'matched', 'discrepancy_reason'])]
+#[Fillable(['store_id', 'day', 'amount', 'online', 'expected', 'reference', 'slip_path', 'slip_sha', 'matched', 'discrepancy_reason'])]
 class Deposit extends Model
 {
     use HasUlids;
@@ -16,6 +16,8 @@ class Deposit extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'online' => 'decimal:2',
+            'expected' => 'decimal:2',
             'matched' => 'boolean',
         ];
     }
@@ -33,6 +35,10 @@ class Deposit extends Model
             'storeId' => $this->store_id,
             'day' => $this->day,
             'amount' => (float) $this->amount,
+            'online' => (float) $this->online,
+            /* The judged-against sum, frozen at recording; null on rows from
+               before it was stored */
+            'expected' => $this->expected !== null ? (float) $this->expected : null,
             'reference' => $this->reference,
             'covers' => $this->days->pluck('day')->sort()->values(),
             'slipUrl' => "/api/files/{$this->slip_path}",

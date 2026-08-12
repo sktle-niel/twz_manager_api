@@ -15,16 +15,21 @@ use Illuminate\Http\Response;
  */
 class ReconciliationController extends Controller
 {
-    private const KEY = 'batch_window_days';
+    /* Public: DepositController enforces this window on every recording */
+    public const KEY = 'batch_window_days';
 
-    private const DEFAULT = 3;
+    public const DEFAULT = 3;
+
+    /** The current window, for whoever enforces or displays it */
+    public static function batchWindowDays(): int
+    {
+        return (int) (Setting::read(self::KEY) ?? self::DEFAULT);
+    }
 
     /** GET /api/settings/reconciliation */
     public function show(): JsonResponse
     {
-        return response()->json([
-            'batchWindowDays' => (int) (Setting::read(self::KEY) ?? self::DEFAULT),
-        ]);
+        return response()->json(['batchWindowDays' => self::batchWindowDays()]);
     }
 
     /** PATCH /api/settings/reconciliation — owner only */

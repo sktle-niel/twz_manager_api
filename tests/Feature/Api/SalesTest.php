@@ -50,6 +50,29 @@ class SalesTest extends TestCase
         return User::query()->where('username', 'marvin.deocampo')->firstOrFail();
     }
 
+    public function test_service_and_labor_lines_stay_out_of_the_sales_figures(): void
+    {
+        // ₱1,500 receipt: ₱1,000 of parts and a ₱500 labor charge. Labor is
+        // not the drawer's money — gross must read 1000, profit 400.
+        Setting::write('sales_excluded_skus', '19143,11083');
+        $this->loyverseAnswers([
+            $this->receipt([
+                'total_money' => 1500.0,
+                'line_items' => [
+                    ['sku' => '20001', 'quantity' => 2, 'cost' => 300.0, 'cost_total' => 600.0, 'total_money' => 1000.0],
+                    ['sku' => '19143', 'quantity' => 1, 'cost' => 0.0, 'cost_total' => 0.0, 'total_money' => 500.0],
+                ],
+            ]),
+        ]);
+        app(ReceiptSync::class)->run(10);
+
+        $this->actingAs($this->manager())
+            ->getJson('/api/sales/daily?storeIds=arevalo&from=2026-08-05&to=2026-08-05')
+            ->assertOk()
+            ->assertJsonPath('0.gross', 1000)
+            ->assertJsonPath('0.profit', 400);
+    }
+
     public function test_a_sale_lands_on_the_branch_local_day_with_gross_and_profit(): void
     {
         /* 17:30 UTC is 01:30 the NEXT day in Manila — the audit day must be

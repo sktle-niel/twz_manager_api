@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\Api\AccountPasswordController;
+use App\Http\Controllers\Api\AdvanceController;
 use App\Http\Controllers\Api\AuditController;
+use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\DepositController;
 use App\Http\Controllers\Api\ExpenseCategoryController;
 use App\Http\Controllers\Api\ExpenseController;
@@ -9,9 +11,11 @@ use App\Http\Controllers\Api\FileController;
 use App\Http\Controllers\Api\ManagerController;
 use App\Http\Controllers\Api\ManagerPasswordController;
 use App\Http\Controllers\Api\PosSettingsController;
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\ReconciliationController;
 use App\Http\Controllers\Api\ResetPinController;
 use App\Http\Controllers\Api\SalesController;
+use App\Http\Controllers\Api\SalesFilterController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\SignInLogController;
 use App\Http\Controllers\Api\StoreController;
@@ -51,7 +55,20 @@ Route::middleware('auth:web')->group(function () {
     Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy']);
     Route::get('/expense-categories', [ExpenseCategoryController::class, 'index']);
 
+    /* Cash advances: drawer money an employee drew against their pay. The
+       ledger nets them from the day's expected deposit; same closed-day rule */
+    Route::get('/advances', [AdvanceController::class, 'index']);
+    Route::post('/advances', [AdvanceController::class, 'store']);
+    Route::patch('/advances/{advance}', [AdvanceController::class, 'update']);
+    Route::delete('/advances/{advance}', [AdvanceController::class, 'destroy']);
+
     Route::get('/accounts/{accountId}/sign-ins', [SignInLogController::class, 'index']);
+
+    /* Web-push reminders: the key to subscribe with, and this browser's
+       mailbox — registered to whoever is signed in, forgotten on request */
+    Route::get('/push/key', [PushController::class, 'key']);
+    Route::post('/push/subscriptions', [PushController::class, 'store']);
+    Route::delete('/push/subscriptions', [PushController::class, 'destroy']);
 
     /* Both roles read the window (the status card counts against it);
        only the owner turns the dial, below */
@@ -68,6 +85,12 @@ Route::middleware('auth:web')->group(function () {
     Route::middleware('owner')->group(function () {
         Route::get('/settings/pos', [PosSettingsController::class, 'show']);
         Route::post('/settings/pos/reconnect', [PosSettingsController::class, 'reconnect']);
+
+        /* What never counts toward gross and profit (services & labor), and
+           the catalog search that picks those items out */
+        Route::get('/settings/sales-filter', [SalesFilterController::class, 'show']);
+        Route::put('/settings/sales-filter', [SalesFilterController::class, 'update']);
+        Route::get('/catalog/search', [CatalogController::class, 'search']);
 
         Route::put('/expense-categories', [ExpenseCategoryController::class, 'replace']);
         Route::patch('/settings/reconciliation', [ReconciliationController::class, 'update']);
