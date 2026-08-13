@@ -93,16 +93,36 @@ class SessionController extends Controller
 
     /*
      * The sign-in log: which device, from where, tied to this session so
-     * "this device" is a fact later. Kept short — the last 15 tell the
-     * story, and the table must not grow with every shop morning.
+     * "this device" is a fact later. The same device on the same IP is one
+     * line, not a diary — a repeat sign-in refreshes that line's time (and
+     * session id, so "this device" follows) instead of stacking a new entry
+     * every shop morning. Kept short — the last 15 tell the story.
      */
     private function recordSignIn(Request $request, User $user): void
     {
+        $named = DeviceName::parse($request->userAgent());
+        $ip = (string) $request->ip();
+
+        $repeat = SignIn::query()
+            ->where('user_id', $user->id)
+            ->where('ip', $ip)
+            ->where('device', $named['device'])
+            ->first();
+
+        if ($repeat !== null) {
+            $repeat->update([
+                'session_id' => $request->session()->getId(),
+                'at' => now(),
+            ]);
+
+            return;
+        }
+
         SignIn::query()->create([
             'user_id' => $user->id,
             'session_id' => $request->session()->getId(),
-            ...DeviceName::parse($request->userAgent()),
-            'ip' => (string) $request->ip(),
+            ...$named,
+            'ip' => $ip,
             'place' => '',
             'at' => now(),
         ]);
