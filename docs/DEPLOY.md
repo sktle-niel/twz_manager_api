@@ -15,20 +15,26 @@ git + SSH flow.
 1. In the frontend repo: `npm run stage` — builds and copies the PWA into
    this repo's `public/`.
 2. Copy this whole repo (INCLUDING `vendor/`, EXCLUDING `.git`, `tests`,
-   `storage/logs`, `storage/framework/{cache/data,sessions,views}` contents)
-   into a folder named `app`, replace `.env` with a production one (APP_KEY
-   generated locally, DB placeholders, the Loyverse token, the VAPID keys,
-   and a random `SETUP_KEY`), and zip the `app` folder.
+   `storage/logs`, `storage/framework/{cache/data,sessions,views}` contents),
+   replace `.env` with a production one (APP_KEY generated locally, DB
+   placeholders, the Loyverse token, the VAPID keys, and a random
+   `SETUP_KEY`), and zip the CONTENTS — `public/`, `vendor/`, `.env` at the
+   archive root, no wrapper folder. Hostinger's Extract dialog always creates
+   a folder for you (next step), so a wrapper would only nest things twice.
+   Mind the dotfiles: `.env` must make it into the zip. A real ZIP, too —
+   Windows `tar -cf x.zip …` writes a TAR with a .zip name unless `-a` truly
+   kicks in; check the file starts with `PK`.
 
 **On Hostinger:**
 
 3. hPanel → the website → **Advanced → PHP Configuration** → PHP **8.3**.
 4. **Databases → Management** → create database + user + password.
-5. **Files → File Manager** → open `domains/YOURDOMAIN.com/` → upload the
-   zip → right-click → **Extract**. You now have `…/app/` with `public/`
+5. **Files → File Manager** → open `public_html/` → upload the zip →
+   right-click → **Extract**. The dialog demands a folder name: type `app`,
+   destination `public_html`. You now have `public_html/app/` with `public/`
    inside.
-6. Point the site's **document root** at `domains/YOURDOMAIN.com/app/public`
-   (or create a subdomain with that custom folder).
+6. Point the site's **document root** at `app/public` (or create a subdomain
+   with that custom folder — the field is relative to `public_html/`).
 7. In File Manager, open `app/.env` → fill in `APP_URL` and the three `DB_*`
    placeholders → save.
 8. In a browser, visit `https://YOURDOMAIN/setup/THE_SETUP_KEY?start=YYYY-MM-DD`

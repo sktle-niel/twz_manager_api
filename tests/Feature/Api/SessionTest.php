@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\SignIn;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -129,6 +131,32 @@ class SessionTest extends TestCase
             'identifier' => 'marvin.deocampo',
             'password' => 'wrong-password',
         ])->assertStatus(401);
+    }
+
+    public function test_a_repeat_device_refreshes_its_log_line_instead_of_stacking(): void
+    {
+        $phone = ['User-Agent' => 'Mozilla/5.0 (Linux; Android 14) Chrome/126.0 Mobile Safari/537.36'];
+        $laptop = ['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64) Chrome/126.0 Safari/537.36'];
+        $signIn = fn (array $headers) => $this->postJson('/api/session', [
+            'identifier' => 'marvin.deocampo',
+            'password' => 'password',
+        ], $headers)->assertOk();
+
+        $signIn($phone);
+        $this->travel(1)->hours();
+        $signIn($phone);
+
+        $marvin = User::query()->where('username', 'marvin.deocampo')->firstOrFail();
+        $rows = SignIn::query()->where('user_id', $marvin->id)->get();
+
+        // Same phone, same IP: one line, wearing the latest time
+        // (compared at second precision — the column stores no microseconds)
+        $this->assertCount(1, $rows);
+        $this->assertTrue($rows->first()->at->startOfSecond()->equalTo(now()->startOfSecond()));
+
+        // A different device from the same IP is genuinely new — a second line
+        $signIn($laptop);
+        $this->assertSame(2, SignIn::query()->where('user_id', $marvin->id)->count());
     }
 
     public function test_sign_out_ends_the_session(): void
