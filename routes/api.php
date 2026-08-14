@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AccountPasswordController;
 use App\Http\Controllers\Api\AdvanceController;
 use App\Http\Controllers\Api\AuditController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\Api\ReconciliationController;
 use App\Http\Controllers\Api\ResetPinController;
 use App\Http\Controllers\Api\SalesController;
 use App\Http\Controllers\Api\SalesFilterController;
+use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Controllers\Api\SignInLogController;
 use App\Http\Controllers\Api\StoreController;
@@ -64,6 +66,10 @@ Route::middleware('auth:web')->group(function () {
 
     Route::get('/accounts/{accountId}/sign-ins', [SignInLogController::class, 'index']);
 
+    /* One search over everything the caller may see — days, expenses,
+       deposits, and for the owner the accounts and branches too */
+    Route::get('/search', [SearchController::class, 'query']);
+
     /* Web-push reminders: the key to subscribe with, and this browser's
        mailbox — registered to whoever is signed in, forgotten on request */
     Route::get('/push/key', [PushController::class, 'key']);
@@ -79,6 +85,9 @@ Route::middleware('auth:web')->group(function () {
 
     /* Both roles change their own password here; the current one is the proof */
     Route::put('/account/password', [AccountPasswordController::class, 'update']);
+
+    /* And their own face: name, username, stock avatar, optional photo */
+    Route::patch('/account', [AccountController::class, 'update']);
 
     /* ---- owner only ---- */
 
@@ -100,6 +109,7 @@ Route::middleware('auth:web')->group(function () {
         Route::get('/managers', [ManagerController::class, 'index']);
         Route::post('/managers', [ManagerController::class, 'store']);
         Route::patch('/managers/{manager}/branch', [ManagerController::class, 'assign']);
+        Route::patch('/managers/{manager}/active', [ManagerController::class, 'setActive']);
 
         /* Recovery lives here now: a manager who is locked out asks the owner,
            and the owner sets a new password behind the PIN. Nothing is mailed

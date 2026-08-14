@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\PushSubscription;
 use App\Models\Store;
 use App\Models\User;
 use App\Support\Identity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
 /*
@@ -88,6 +91,32 @@ class ManagerController extends Controller
         $moving->forceFill(['store_id' => $data['storeId']])->save();
         if ($holder !== null) {
             $holder->forceFill(['store_id' => $vacated])->save();
+        }
+
+        return response()->json($this->everyone());
+    }
+
+    /** PATCH /api/managers/{manager}/active — disabling signs them out everywhere */
+    public function setActive(Request $request, string $manager): JsonResponse
+    {
+        $data = $request->validate(['active' => ['required', 'boolean']]);
+
+        $found = User::query()->where('role', User::ROLE_MANAGER)->find($manager);
+        if ($found === null) {
+            return $this->notFound('That account is no longer there.');
+        }
+
+        $found->forceFill([
+            'active' => $data['active'],
+            /* Disabling revokes the remembered devices along with the account */
+            ...($data['active'] ? [] : ['remember_token' => Str::random(60)]),
+        ])->save();
+
+        if (! $data['active']) {
+            /* Every door at once: live sessions end now, and the push
+               mailboxes go so reminders stop nudging a closed account */
+            DB::table('sessions')->where('user_id', $found->id)->delete();
+            PushSubscription::query()->where('user_id', $found->id)->delete();
         }
 
         return response()->json($this->everyone());

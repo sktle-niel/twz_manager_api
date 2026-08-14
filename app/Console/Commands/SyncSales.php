@@ -15,14 +15,26 @@ use Illuminate\Console\Command;
  */
 class SyncSales extends Command
 {
-    protected $signature = 'twz:sync-sales';
+    protected $signature = 'twz:sync-sales
+        {--days= : Reconcile — re-pull the trailing N days wholesale; never moves the watermark}';
 
     protected $description = 'Pull receipts from Loyverse into the local sales table';
 
     public function handle(ReceiptSync $sync): int
     {
+        $days = $this->option('days');
+        $reconcile = $days !== null ? max(1, (int) $days) : null;
+        $pages = (int) config('loyverse.sync_pages_command');
+
         try {
-            $report = $sync->run((int) config('loyverse.sync_pages_command'));
+            $report = $sync->run($pages, $reconcile);
+            /* At its scheduled hour the every-minute incremental may briefly
+               hold the lock. The nightly reconcile is the safety net — it
+               waits the lock out rather than silently skipping a night. */
+            for ($try = 0; $reconcile !== null && $report['locked'] && $try < 3; $try++) {
+                sleep(20);
+                $report = $sync->run($pages, $reconcile);
+            }
         } catch (LoyverseException $e) {
             $this->error($e->getMessage());
 
@@ -42,7 +54,9 @@ class SyncSales extends Command
             $report['skipped'],
         ));
         if (! $report['done']) {
-            $this->warn('Page cap reached before the last page. Run again to continue; the watermark did not advance.');
+            $this->warn($reconcile !== null
+                ? 'Page cap reached before the last page — tonight\'s coverage is partial; the next nightly run re-covers the window.'
+                : 'Page cap reached before the last page. Run again to continue; the watermark did not advance.');
         }
 
         return self::SUCCESS;

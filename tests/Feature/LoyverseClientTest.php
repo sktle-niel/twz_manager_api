@@ -64,6 +64,30 @@ class LoyverseClientTest extends TestCase
         }
     }
 
+    public function test_an_upstream_429_starts_a_cooldown_the_next_call_respects(): void
+    {
+        Http::fake([
+            'api.loyverse.com/*' => Http::response(['error' => 'rate'], 429, ['Retry-After' => '42']),
+        ]);
+        $client = app(LoyverseClient::class);
+
+        try {
+            $client->merchant();
+        } catch (LoyverseBudgetExhausted) {
+            // expected — the 429 itself
+        }
+
+        // The Retry-After is in force for everyone: no second request crosses
+        try {
+            $client->merchant();
+            $this->fail('Expected LoyverseBudgetExhausted');
+        } catch (LoyverseBudgetExhausted $e) {
+            $this->assertGreaterThan(0, $e->retryAfterSeconds);
+            $this->assertLessThanOrEqual(42, $e->retryAfterSeconds);
+        }
+        Http::assertSentCount(1);
+    }
+
     public function test_a_rejected_token_is_its_own_failure(): void
     {
         Http::fake(['api.loyverse.com/*' => Http::response(['error' => 'no'], 401)]);
