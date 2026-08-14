@@ -4,6 +4,7 @@ namespace App\Services\Loyverse;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -23,6 +24,10 @@ use Illuminate\Support\Facades\RateLimiter;
 class LoyverseClient
 {
     private const BUDGET_KEY = 'loyverse:budget';
+
+    /* An upstream 429 answered with Retry-After; until that instant passes,
+       nothing here asks again — the whole app backs off as one */
+    private const COOLDOWN_KEY = 'loyverse:cooldown';
 
     private ?int $timeoutOverride = null;
 
@@ -74,12 +79,25 @@ class LoyverseClient
         return RateLimiter::remaining(self::BUDGET_KEY, config('loyverse.budget'));
     }
 
+    /** Seconds left of an upstream Retry-After; zero when none is in force */
+    private function cooldownRemaining(): int
+    {
+        $until = (int) Cache::get(self::COOLDOWN_KEY, 0);
+
+        return max(0, $until - now()->getTimestamp());
+    }
+
     /** @param array<string, mixed> $query */
     private function get(string $path, array $query = []): array
     {
         $token = (string) config('loyverse.token');
         if ($token === '') {
             throw new LoyverseNotConfigured('No Loyverse token is configured.');
+        }
+
+        $coolFor = $this->cooldownRemaining();
+        if ($coolFor > 0) {
+            throw new LoyverseBudgetExhausted($coolFor, 'Backing off after an upstream rate limit.');
         }
 
         $budget = (int) config('loyverse.budget');
@@ -120,10 +138,20 @@ class LoyverseClient
             /* The account budget is shared — someone else spent it. This is
                worth a loud log line: per docs/LOYVERSE.md it means our slice
                is set too high or another integration is hungry. */
-            $retryAfter = max(1, (int) $response->header('Retry-After', '60'));
+            /* Retry-After may also arrive as an HTTP-date, which (int) would
+               read as zero — a non-numeric value falls back to a minute */
+            $header = (string) $response->header('Retry-After', '60');
+            $retryAfter = max(1, ctype_digit($header) ? (int) $header : 60);
             Log::warning('Loyverse answered 429 — shared account budget exhausted upstream.', [
                 'path' => $path, 'retry_after' => $retryAfter,
             ]);
+            /* Honor the Retry-After for every caller, not just this one — a
+               scheduled run a minute later must not hammer the same wall */
+            Cache::put(
+                self::COOLDOWN_KEY,
+                now()->addSeconds($retryAfter)->getTimestamp(),
+                $retryAfter,
+            );
             throw new LoyverseBudgetExhausted($retryAfter, 'Loyverse rate limit hit for the merchant account.');
         }
 

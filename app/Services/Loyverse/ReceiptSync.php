@@ -94,24 +94,32 @@ class ReceiptSync
      * Loyverse twice at once — the second asker is told `locked` and serves
      * what is already local.
      *
+     * `$reconcileDays` turns the walk into the nightly safety net: re-pull
+     * everything updated in the trailing N days and upsert it wholesale,
+     * repairing whatever a missed page or a skew gap left behind. A reconcile
+     * NEVER writes the watermark — its high-water mark can sit behind the
+     * incremental run's, and writing it would regress the mark.
+     *
      * @return array{pages: int, upserted: int, skipped: int, done: bool, locked: bool}
      */
-    public function run(int $maxPages): array
+    public function run(int $maxPages, ?int $reconcileDays = null): array
     {
-        $lock = Cache::lock(self::LOCK, 300);
+        /* Sized for the deep walks: a backfill or a reconcile at 45s a page
+           must not outlive its own lock and let a second walker in */
+        $lock = Cache::lock(self::LOCK, 900);
         if (! $lock->get()) {
             return ['pages' => 0, 'upserted' => 0, 'skipped' => 0, 'done' => false, 'locked' => true];
         }
 
         try {
-            return $this->walk($maxPages);
+            return $this->walk($maxPages, $reconcileDays);
         } finally {
             $lock->release();
         }
     }
 
     /** @return array{pages: int, upserted: int, skipped: int, done: bool, locked: bool} */
-    private function walk(int $maxPages): array
+    private function walk(int $maxPages, ?int $reconcileDays = null): array
     {
         $stores = Store::query()
             ->whereNotNull('loyverse_store_id')
@@ -119,9 +127,11 @@ class ReceiptSync
             ->keyBy('loyverse_store_id');
 
         $since = Setting::read(self::WATERMARK);
-        $sinceInstant = $since !== null
-            ? CarbonImmutable::parse($since)
-            : CarbonImmutable::now('UTC')->subDays((int) config('loyverse.backfill_days'));
+        $sinceInstant = match (true) {
+            $reconcileDays !== null => CarbonImmutable::now('UTC')->subDays($reconcileDays),
+            $since !== null => CarbonImmutable::parse($since),
+            default => CarbonImmutable::now('UTC')->subDays((int) config('loyverse.backfill_days')),
+        };
 
         $cursor = null;
         $pages = 0;
@@ -159,7 +169,7 @@ class ReceiptSync
         } while ($cursor !== null && $pages < $maxPages);
 
         $done = $cursor === null;
-        if ($done) {
+        if ($done && $reconcileDays === null) {
             Setting::write(self::WATERMARK, $high->toIso8601ZuluString());
             Cache::put(self::SYNCED_AT, now()->toIso8601String(), (int) config('loyverse.receipt_stale_after'));
         }

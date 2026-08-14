@@ -34,6 +34,7 @@ class Identity
             'storeId' => $user->store_id,
             'active' => $user->active,
             'photoUrl' => self::photoUrl($user),
+            'avatarKind' => $user->avatar_kind ?? 'girl',
         ];
     }
 
@@ -45,11 +46,14 @@ class Identity
             'name' => $user->name,
             'username' => $user->username,
             'photoUrl' => self::photoUrl($user),
+            'avatarKind' => $user->avatar_kind ?? 'girl',
         ];
     }
 
+    /* Same door as every stored image: session-guarded /api/files — there is
+       no public disk, so Storage::url would point at nothing */
     private static function photoUrl(User $user): ?string
     {
-        return $user->photo_path ? Storage::url($user->photo_path) : null;
+        return $user->photo_path ? '/api/files/'.$user->photo_path : null;
     }
 }

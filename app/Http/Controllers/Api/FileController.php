@@ -17,9 +17,10 @@ class FileController extends Controller
     /** GET /api/files/{path} */
     public function show(Request $request, string $path): Response
     {
-        /* Only the receipts tree is servable, and no path segment may climb
-           out of it */
-        if (! str_starts_with($path, 'receipts/') || str_contains($path, '..')) {
+        /* Only the receipts and avatars trees are servable, and no path
+           segment may climb out of them */
+        $servable = str_starts_with($path, 'receipts/') || str_starts_with($path, 'avatars/');
+        if (! $servable || str_contains($path, '..')) {
             abort(404);
         }
         if (! Storage::exists($path)) {

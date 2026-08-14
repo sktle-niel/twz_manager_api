@@ -16,6 +16,12 @@ Artisan::command('inspire', function () {
    backfill still walking its pages must not race a second copy. */
 Schedule::command('twz:sync-sales')->everyMinute()->withoutOverlapping();
 
+/* The safety net under the incremental pass: once a night, off-peak, re-pull
+   the trailing week and upsert it wholesale — whatever a missed page, a clock
+   skew, or a quiet edit left behind is repaired here. The watermark is not
+   touched; the incremental run stays authoritative. */
+Schedule::command('twz:sync-sales --days=7')->dailyAt('03:30')->withoutOverlapping();
+
 /* The item catalog changes rarely; a half-hour-old copy is plenty for the
    sales-filter search, and the walk is minutes long — scheduler work, never
    a page view's */
