@@ -30,4 +30,17 @@ trait ReadsMultipart
 
         return is_array($found) ? array_values($found) : [$found];
     }
+
+    /**
+     * Sniffed content type, not the client's claim. Every stored file is
+     * later served inline on the app's own origin (/api/files), so an HTML
+     * or SVG body smuggled in as a "photo" would run as the app — this gate
+     * guards every photo intake, not just the avatar's.
+     */
+    private function isPhoto(UploadedFile $file): bool
+    {
+        return in_array($file->getMimeType(), [
+            'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif',
+        ], true) && $file->getSize() <= 10 * 1024 * 1024;
+    }
 }

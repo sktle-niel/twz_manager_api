@@ -54,13 +54,7 @@ class AccountController extends Controller
         $photo = $this->files($request, 'photo')[0] ?? null;
         $oldPath = $user->photo_path;
         if ($photo !== null) {
-            /* Sniffed content type, not the client's claim — these files are
-               served inline on the app's own origin, so an HTML or SVG body
-               smuggled in as a "photo" would run as the app */
-            $image = in_array($photo->getMimeType(), [
-                'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif',
-            ], true) && $photo->getSize() <= 10 * 1024 * 1024;
-            if (! $image) {
+            if (! $this->isPhoto($photo)) {
                 return $this->fieldErrors([
                     'photo' => 'Use a photo file (JPG, PNG, or WebP) under 10 MB.',
                 ]);
