@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
@@ -60,7 +61,7 @@ class ExpenseController extends Controller
         $user = $request->user();
         $categories = ExpenseCategory::query()->pluck('name')->all();
 
-        foreach ($payload['items'] as $item) {
+        foreach ($payload['items'] as $i => $item) {
             if (! $this->allowed($user, [$item['storeId']])) {
                 return $this->forbidden();
             }
@@ -70,25 +71,36 @@ class ExpenseController extends Controller
             if ($this->dayClosed($item['storeId'], $item['day'])) {
                 return $this->closedDay($item['day']);
             }
+            foreach ($this->files($request, "receipts.{$i}") as $file) {
+                if (! $this->isPhoto($file)) {
+                    return $this->badPhoto();
+                }
+            }
         }
 
-        $created = [];
-        foreach ($payload['items'] as $i => $item) {
-            $expense = Expense::query()->create([
-                'store_id' => $item['storeId'],
-                'day' => $item['day'],
-                'category' => $item['category'],
-                'note' => $item['note'],
-                'amount' => round((float) $item['amount'], 2),
-                'at' => now(),
-            ]);
+        /* The batch lands whole or not at all — half a day's expenses saved
+           reads as figures nobody entered */
+        $created = DB::transaction(function () use ($request, $payload) {
+            $created = [];
+            foreach ($payload['items'] as $i => $item) {
+                $expense = Expense::query()->create([
+                    'store_id' => $item['storeId'],
+                    'day' => $item['day'],
+                    'category' => $item['category'],
+                    'note' => $item['note'],
+                    'amount' => round((float) $item['amount'], 2),
+                    'at' => now(),
+                ]);
 
-            foreach ($this->files($request, "receipts.{$i}") as $file) {
-                $this->attach($expense, $file);
+                foreach ($this->files($request, "receipts.{$i}") as $file) {
+                    $this->attach($expense, $file);
+                }
+
+                $created[] = $expense->load('photos')->toWire();
             }
 
-            $created[] = $expense->load('photos')->toWire();
-        }
+            return $created;
+        });
 
         return response()->json($created);
     }
@@ -123,6 +135,11 @@ class ExpenseController extends Controller
         /* keepReceipts lists the stored URLs that survive; anything stored
            but absent was removed on the phone, and new files are added */
         if (array_key_exists('keepReceipts', $patch)) {
+            foreach ($this->files($request, 'receipts') as $file) {
+                if (! $this->isPhoto($file)) {
+                    return $this->badPhoto();
+                }
+            }
             $keep = (array) $patch['keepReceipts'];
             foreach ($found->photos as $photo) {
                 if (! in_array("/api/files/{$photo->path}", $keep, true)) {
@@ -187,5 +204,10 @@ class ExpenseController extends Controller
     private function unknownCategory(string $name): JsonResponse
     {
         return response()->json(['message' => "{$name} is not a category anymore."], 422);
+    }
+
+    private function badPhoto(): JsonResponse
+    {
+        return $this->fieldErrors(['receipts' => 'Use photo files (JPG, PNG, or WebP) under 10 MB.']);
     }
 }

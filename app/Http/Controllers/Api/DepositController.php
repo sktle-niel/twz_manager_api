@@ -12,6 +12,7 @@ use App\Support\AuditLedger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 /*
@@ -84,6 +85,14 @@ class DepositController extends Controller
         $slip = $this->files($request, 'slip')[0] ?? null;
         if ($slip === null) {
             return $this->fieldErrors(['slip' => 'Attach the deposit slip photo.']);
+        }
+        if (! $this->isPhoto($slip)) {
+            return $this->fieldErrors(['slip' => 'Use a photo file (JPG, PNG, or WebP) under 10 MB.']);
+        }
+        foreach ($this->files($request, 'discrepancyProof') as $proofFile) {
+            if (! $this->isPhoto($proofFile)) {
+                return $this->fieldErrors(['proof' => 'Use photo files (JPG, PNG, or WebP) under 10 MB.']);
+            }
         }
 
         /* The one-photo-one-deposit rule is the backend's: the file itself is
@@ -163,32 +172,41 @@ class DepositController extends Controller
         bool $matched,
     ): Deposit {
         $slipPath = $slip->store("receipts/slips/{$payload['storeId']}");
-        $deposit = Deposit::query()->create([
-            'store_id' => $payload['storeId'],
-            'day' => $payload['day'],
-            'amount' => $amount,
-            'online' => $online,
-            'expected' => $expected,
-            'reference' => trim((string) $payload['reference']),
-            'slip_path' => (string) $slipPath,
-            'slip_sha' => $sha === false ? null : $sha,
-            'matched' => $matched,
-            'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),
-        ]);
 
-        foreach ($covers as $day) {
-            DepositDay::query()->create([
-                'deposit_id' => $deposit->id,
+        /* One transaction for the whole record: a deposit without its covered
+           days would sit in no batch, and its days would still read pending.
+           Files are stored before it — a rollback strands a photo at worst,
+           never a row pointing at a photo that is not there. */
+        $deposit = DB::transaction(function () use ($request, $payload, $sha, $covers, $amount, $online, $expected, $matched, $slipPath) {
+            $deposit = Deposit::query()->create([
                 'store_id' => $payload['storeId'],
-                'day' => $day,
+                'day' => $payload['day'],
+                'amount' => $amount,
+                'online' => $online,
+                'expected' => $expected,
+                'reference' => trim((string) $payload['reference']),
+                'slip_path' => (string) $slipPath,
+                'slip_sha' => $sha === false ? null : $sha,
+                'matched' => $matched,
+                'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),
             ]);
-        }
-        foreach ($this->files($request, 'discrepancyProof') as $proofFile) {
-            $path = $proofFile->store("receipts/slips/{$deposit->id}/proof");
-            if ($path !== false) {
-                DepositProof::query()->create(['deposit_id' => $deposit->id, 'path' => $path]);
+
+            foreach ($covers as $day) {
+                DepositDay::query()->create([
+                    'deposit_id' => $deposit->id,
+                    'store_id' => $payload['storeId'],
+                    'day' => $day,
+                ]);
             }
-        }
+            foreach ($this->files($request, 'discrepancyProof') as $proofFile) {
+                $path = $proofFile->store("receipts/slips/{$deposit->id}/proof");
+                if ($path !== false) {
+                    DepositProof::query()->create(['deposit_id' => $deposit->id, 'path' => $path]);
+                }
+            }
+
+            return $deposit;
+        });
 
         return $deposit->load('days');
     }
