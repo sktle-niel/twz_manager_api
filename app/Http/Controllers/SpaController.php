@@ -21,6 +21,18 @@ class SpaController extends Controller
             return response()->json(['message' => 'Not found.'], 404);
         }
 
+        /* A file that is not there is a 404, never the app shell. Answering a
+           missing hashed chunk with app.html — status 200, Content-Type
+           text/html — is what bricks an installed PWA the first time it
+           updates: a browser still running yesterday's build asks for
+           /assets/DashboardPage-OLDHASH.js, is handed a page of HTML, and
+           fails to parse it as a module. The route then dies with no way back.
+           Every SPA path is extension-less; anything carrying one is a file
+           that Apache already served if it exists. */
+        if (preg_match('/\.[A-Za-z0-9]+$/', $request->path()) === 1) {
+            abort(404);
+        }
+
         $app = public_path('app.html');
         if (! is_file($app)) {
             return response()->json(

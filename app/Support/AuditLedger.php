@@ -129,12 +129,10 @@ class AuditLedger
         return collect($rows)
             ->map(function (array $row) use ($deposits, $spans, $todayFor) {
                 $deposit = isset($row['depositId']) ? $deposits->get($row['depositId']) : null;
-                /* The house rule: the capital share of the takings stays in
-                   the shop to restock, so what goes to the bank is the
-                   profit minus the day's spend — never the full takings.
+                /* The house rule: the bank gets net sales minus the day's spend.
                    Advances net out too: cash an employee drew is out of the
                    drawer on this day, whoever eventually pays it back. */
-                $expected = round($row['profit'] - $row['expenses'] - $row['advances'], 2);
+                $expected = round($row['gross'] - $row['expenses'] - $row['advances'], 2);
                 $open = $row['day'] >= ($todayFor[$row['storeId']] ?? $row['day']);
 
                 return [
@@ -155,7 +153,6 @@ class AuditLedger
                         ? $spans->get($deposit->id)?->pluck('day')->values() ?? collect()
                         : null,
                     'depositExpected' => $deposit?->expected !== null ? (float) $deposit->expected : null,
-                    'reference' => $deposit?->reference,
                     'slipUrl' => $deposit !== null ? "/api/files/{$deposit->slip_path}" : null,
                     'status' => match (true) {
                         $deposit !== null => $deposit->matched ? 'matched' : 'discrepancy',
