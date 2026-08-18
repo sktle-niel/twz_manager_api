@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['store_id', 'day', 'amount', 'online', 'expected', 'slip_path', 'slip_sha', 'matched', 'discrepancy_reason'])]
+#[Fillable(['store_id', 'day', 'amount', 'online', 'expected', 'slip_path', 'slip_sha', 'matched', 'discrepancy_reason', 'deposited_at', 'cash_included_last_day'])]
 class Deposit extends Model
 {
     use HasUlids;
@@ -42,6 +42,8 @@ class Deposit extends Model
             'covers' => $this->days->pluck('day')->sort()->values(),
             'slipUrl' => "/api/files/{$this->slip_path}",
             'matched' => $this->matched,
+            'depositedAt' => $this->deposited_at ? (string) $this->deposited_at : null,
+            'cashIncludedLastDay' => $this->cash_included_last_day !== null ? (float) $this->cash_included_last_day : null,
         ];
     }
 }

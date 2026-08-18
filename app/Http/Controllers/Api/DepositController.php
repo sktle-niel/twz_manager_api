@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Carbon\Carbon;
 
 /*
  * Deposits: the record a bank slip becomes. The expected figure a deposit is
@@ -72,10 +73,11 @@ class DepositController extends Controller
             'day' => ['required', 'date_format:Y-m-d'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'online' => ['sometimes', 'numeric', 'gte:0'],
-            'reference' => ['required', 'string', 'max:120'],
             'covers' => ['required', 'array', 'min:1'],
             'covers.*' => ['required', 'date_format:Y-m-d'],
             'discrepancyReason' => ['sometimes', 'string', 'max:1000'],
+            'depositedAt' => ['sometimes', 'date'],
+            'cashIncludedLastDay' => ['sometimes', 'numeric', 'gte:0'],
         ])->validate();
 
         if (! $this->allowed($request->user(), [$payload['storeId']])) {
@@ -132,12 +134,26 @@ class DepositController extends Controller
             }
         }
 
-        $expected = round(
-            collect($covers)->sum(fn (string $day) => (float) $pending->get($day)['expected']),
-            2,
-        );
+        // Handle manual partial-day inclusion for the last covered day.
         $amount = round((float) $payload['amount'], 2);
         $online = round((float) ($payload['online'] ?? 0), 2);
+
+        // Split covers into earlier full days and the last day
+        $coversCopy = $covers;
+        $lastDay = array_pop($coversCopy);
+        $earlierDays = $coversCopy;
+
+        $expectedFull = round(
+            collect($earlierDays)->sum(fn (string $day) => (float) $pending->get($day)['expected']),
+            2,
+        );
+
+        $lastAmount = isset($payload['cashIncludedLastDay'])
+            ? round((float) $payload['cashIncludedLastDay'], 2)
+            : (float) $pending->get($lastDay)['expected'];
+
+        $expected = round($expectedFull + $lastAmount, 2);
+
         // Cash on the slip plus what came in online, in centavos, against expected
         $matched = (int) round($amount * 100) + (int) round($online * 100)
             === (int) round($expected * 100);
@@ -187,7 +203,9 @@ class DepositController extends Controller
                     'slip_path' => (string) $slipPath,
                 'slip_sha' => $sha === false ? null : $sha,
                 'matched' => $matched,
-                'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),
+                    'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),
+                'deposited_at' => isset($payload['depositedAt']) ? Carbon::parse($payload['depositedAt'])->toDateTimeString() : null,
+                'cash_included_last_day' => isset($payload['cashIncludedLastDay']) ? round((float) $payload['cashIncludedLastDay'], 2) : null,
             ]);
 
             foreach ($covers as $day) {
