@@ -14,7 +14,7 @@ use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /*
- * Recording a deposit. The expected figure follows the house rule — profit
+ * Recording a deposit. The expected figure follows the house rule — net sales
  * minus expenses — and a mismatch can never be recorded without its reason.
  */
 class DepositRecordTest extends TestCase
@@ -38,7 +38,7 @@ class DepositRecordTest extends TestCase
             'store_id' => 'arevalo', 'day' => '2026-08-01', 'category' => 'Meals',
             'note' => 'lunch', 'amount' => 300.0, 'at' => now(),
         ]);
-        // expected = (5000 - 2000) - 300 = 2700
+        // expected = 5000 - 300 = 4700
     }
 
     private function manager(): User
@@ -52,7 +52,7 @@ class DepositRecordTest extends TestCase
         $payload = [
             'storeId' => 'arevalo',
             'day' => '2026-08-02',
-            'amount' => 2700.0,
+            'amount' => 4700.0,
             'reference' => 'BDO-4417',
             'covers' => ['2026-08-01'],
             ...$overrides,
@@ -69,7 +69,7 @@ class DepositRecordTest extends TestCase
         $this->record()
             ->assertOk()
             ->assertJsonPath('matched', true)
-            ->assertJsonPath('amount', 2700)
+            ->assertJsonPath('amount', 4700)
             ->assertJsonPath('covers.0', '2026-08-01');
 
         // The day left the backlog and its audit row reads matched
@@ -79,12 +79,12 @@ class DepositRecordTest extends TestCase
         $this->actingAs($this->manager())
             ->getJson('/api/audits?storeIds=arevalo&from=2026-08-01&to=2026-08-01')
             ->assertJsonPath('0.status', 'matched')
-            ->assertJsonPath('0.deposited', 2700);
+            ->assertJsonPath('0.deposited', 4700);
     }
 
     public function test_a_mismatch_without_a_reason_is_refused(): void
     {
-        $this->record(['amount' => 2500.0])
+        $this->record(['amount' => 4500.0])
             ->assertStatus(422)
             ->assertJsonStructure(['fields' => ['reason']]);
 
@@ -94,7 +94,7 @@ class DepositRecordTest extends TestCase
     public function test_a_mismatch_with_its_reason_records_as_a_discrepancy(): void
     {
         $this->record([
-            'amount' => 2500.0,
+            'amount' => 4500.0,
             'discrepancyReason' => 'Paid the parts courier in cash, receipt attached.',
         ])
             ->assertOk()
@@ -118,7 +118,7 @@ class DepositRecordTest extends TestCase
         Setting::write('batch_window_days', '1');
         $this->record([
             'day' => '2026-08-03',
-            'amount' => 4700.0,
+            'amount' => 7700.0,
             'covers' => ['2026-08-01', '2026-08-02'],
         ])
             ->assertStatus(422)
@@ -126,11 +126,12 @@ class DepositRecordTest extends TestCase
             ->assertJsonStructure(['fields' => ['days']]);
         $this->assertSame(0, Deposit::query()->count());
 
-        // Widened, the same two-day deposit goes through and matches
+        // Widened, the same two-day deposit goes through and matches at the
+        // combined expected amount for both covered days.
         Setting::write('batch_window_days', '3');
         $this->record([
             'day' => '2026-08-03',
-            'amount' => 4700.0,
+            'amount' => 7700.0,
             'covers' => ['2026-08-01', '2026-08-02'],
         ])
             ->assertOk()
@@ -140,21 +141,21 @@ class DepositRecordTest extends TestCase
     public function test_online_payments_count_toward_the_match(): void
     {
         // 2200 cash on the slip plus 500 that came in through GCash answers
-        // the 2700 expected — an online sale is not a shortfall
-        $this->record(['amount' => 2200.0, 'online' => 500.0])
+        // the 4700 expected — an online sale is not a shortfall
+        $this->record(['amount' => 2200.0, 'online' => 2500.0])
             ->assertOk()
             ->assertJsonPath('matched', true)
             ->assertJsonPath('amount', 2200)
-            ->assertJsonPath('online', 500);
+            ->assertJsonPath('online', 2500);
 
         $this->assertTrue(Deposit::query()->sole()->matched);
     }
 
     public function test_cash_plus_online_short_of_expected_still_needs_its_reason(): void
     {
-        // 2200 + 300 = 2500 against 2700 — declaring online money does not
+        // 2200 + 2000 = 4200 against 4700 — declaring online money does not
         // waive the explanation for what is still missing
-        $this->record(['amount' => 2200.0, 'online' => 300.0])
+        $this->record(['amount' => 2200.0, 'online' => 2000.0])
             ->assertStatus(422)
             ->assertJsonStructure(['fields' => ['reason']]);
 
@@ -196,7 +197,7 @@ class DepositRecordTest extends TestCase
     {
         $this->actingAs($this->manager())->post('/api/deposits', [
             'payload' => json_encode([
-                'storeId' => 'arevalo', 'day' => '2026-08-02', 'amount' => 2700.0,
+                'storeId' => 'arevalo', 'day' => '2026-08-02', 'amount' => 4700.0,
                 'reference' => 'BDO-4417', 'covers' => ['2026-08-01'],
             ]),
         ], ['Accept' => 'application/json'])

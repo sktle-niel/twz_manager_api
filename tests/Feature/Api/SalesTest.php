@@ -53,7 +53,7 @@ class SalesTest extends TestCase
     public function test_service_and_labor_lines_stay_out_of_the_sales_figures(): void
     {
         // ₱1,500 receipt: ₱1,000 of parts and a ₱500 labor charge. Labor is
-        // not the drawer's money — gross must read 1000, profit 400.
+        // not the drawer's money — net sales stays at 1000 while profit remains 400.
         Setting::write('sales_excluded_skus', '19143,11083');
         $this->loyverseAnswers([
             $this->receipt([
@@ -95,8 +95,8 @@ class SalesTest extends TestCase
                 'gross' => 1000.0,
                 'profit' => 400.0,
                 'expenses' => 0.0,
-                // House rule: expected follows profit, never the takings
-                'expected' => 400.0,
+                // House rule: a deposit follows net sales, not the margin
+                'expected' => 1000.0,
             ]]);
 
         // And nothing on the UTC day
@@ -187,13 +187,13 @@ class SalesTest extends TestCase
         ]);
         app(ReceiptSync::class)->run(10);
 
-        // Profit per hour, not takings: (300-100)+(200-100), then 450-150
+        // Net sales per hour, not the padding between gross and cost
         $this->actingAs($this->manager())
             ->getJson('/api/sales/hourly?storeIds=arevalo&day=2026-08-05')
             ->assertOk()
             ->assertExactJson([
-                ['hour' => 9, 'amount' => 300.0],
-                ['hour' => 14, 'amount' => 300.0],
+                ['hour' => 9, 'amount' => 500.0],
+                ['hour' => 14, 'amount' => 450.0],
             ]);
     }
 

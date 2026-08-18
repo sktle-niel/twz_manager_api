@@ -82,7 +82,6 @@ class GlobalSearch
                         $this->num($row['expenses']),
                         $this->num($row['expected']),
                         $row['deposited'] !== null ? $this->num($row['deposited']) : null,
-                        $row['reference'],
                     ));
             })
             ->sortByDesc('day')

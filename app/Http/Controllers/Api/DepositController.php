@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Validator;
 
 /*
  * Deposits: the record a bank slip becomes. The expected figure a deposit is
- * matched against follows the house rule — profit minus expenses; the
+ * matched against follows the house rule — net sales minus expenses; the
  * capital share of the takings stays in the shop to restock. Not all of it
  * arrives as cash: GCash and bank-transfer sales land in the account without
  * touching the drawer, so the manager declares that `online` figure alongside
@@ -184,8 +184,7 @@ class DepositController extends Controller
                 'amount' => $amount,
                 'online' => $online,
                 'expected' => $expected,
-                'reference' => trim((string) $payload['reference']),
-                'slip_path' => (string) $slipPath,
+                    'slip_path' => (string) $slipPath,
                 'slip_sha' => $sha === false ? null : $sha,
                 'matched' => $matched,
                 'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),

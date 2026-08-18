@@ -16,10 +16,10 @@ use Illuminate\Http\Request;
  * numbers track the tills within a couple of minutes without any read ever
  * waiting on Loyverse being reachable.
  *
- * `gross` is money taken — the figure a bank deposit must match. `profit` is
- * gross minus what the goods cost the shop (net of refunds): the number the
- * owner reads as kita. Deposits reconcile against gross, never profit;
- * nobody deposits a margin.
+ * `gross` is net sales — the figure a bank deposit must match after refunds
+ * and excluded service/labor lines are removed. `profit` is the cost-adjusted
+ * margin held for reporting, but deposit reconciliation is based on net sales,
+ * never the margin.
  */
 class SalesController extends Controller
 {
@@ -53,11 +53,11 @@ class SalesController extends Controller
             'gross' => (float) $row->g,
             'profit' => (float) $row->p,
             /* Sales rows carry no expense join (the audit ledger owns that);
-               expected here follows the house rule profit - expenses with
+               expected here follows the house rule net sales - expenses with
                expenses at zero. The figure a deposit is matched against
                always comes from /audits. */
             'expenses' => 0.0,
-            'expected' => (float) $row->p,
+            'expected' => (float) $row->g,
         ]));
     }
 
@@ -72,10 +72,10 @@ class SalesController extends Controller
 
         $this->sync->refreshIfStale();
 
-        /* The hour-by-hour figure is PROFIT, like every headline the charts
-           draw — gross stays the deposit-reconciliation number on /audits */
+        /* The hour-by-hour figure is net sales — the day-to-day charts are the
+           same base the audit pages reconcile deposits against. */
         $rows = Receipt::query()
-            ->selectRaw('hour, ROUND(SUM(gross - cost), 2) AS amount')
+           ->selectRaw('hour, ROUND(SUM(gross), 2) AS amount')
             ->where('cancelled', false)
             ->whereIn('store_id', $storeIds)
             ->where('day', $request->query('day'))

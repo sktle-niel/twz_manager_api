@@ -24,7 +24,7 @@ class AdvanceTest extends TestCase
         parent::setUp();
         $this->seed();
 
-        // 2026-08-01, arevalo: takings 5000, cost 2000 — profit 3000
+        // 2026-08-01, arevalo: net sales 5000, cost 2000 — profit 3000
         Receipt::query()->create([
             'receipt_number' => 'r-1', 'store_id' => 'arevalo', 'type' => 'SALE',
             'day' => '2026-08-01', 'hour' => 10, 'receipt_date' => '2026-08-01 02:00:00',
@@ -55,11 +55,11 @@ class AdvanceTest extends TestCase
     {
         $this->draw(500.0);
 
-        // expected = 3000 profit - 0 expenses - 500 advanced
+        // expected = 5000 net sales - 0 expenses - 500 advanced
         $this->actingAs($this->manager())
             ->getJson('/api/audits?storeIds=arevalo&from=2026-08-01&to=2026-08-01')
             ->assertJsonPath('0.advances', 500)
-            ->assertJsonPath('0.expected', 2500);
+            ->assertJsonPath('0.expected', 4500);
     }
 
     public function test_a_deposit_of_the_netted_amount_matches(): void
@@ -71,7 +71,7 @@ class AdvanceTest extends TestCase
             'payload' => json_encode([
                 'storeId' => 'arevalo',
                 'day' => '2026-08-02',
-                'amount' => 2500.0,
+                'amount' => 4500.0,
                 'reference' => 'BDO-9021',
                 'covers' => ['2026-08-01'],
             ]),
@@ -89,7 +89,7 @@ class AdvanceTest extends TestCase
 
         $this->actingAs($this->manager())->post('/api/deposits', [
             'payload' => json_encode([
-                'storeId' => 'arevalo', 'day' => '2026-08-02', 'amount' => 2500.0,
+                'storeId' => 'arevalo', 'day' => '2026-08-02', 'amount' => 4500.0,
                 'reference' => 'BDO-9021', 'covers' => ['2026-08-01'],
             ]),
             'slip' => [UploadedFile::fake()->image('slip.jpg')],
