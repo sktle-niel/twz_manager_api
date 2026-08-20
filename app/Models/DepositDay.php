@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 
 /** One audited day one deposit covers — the (store, day) pair is unique */
-#[Fillable(['deposit_id', 'store_id', 'day'])]
+#[Fillable(['deposit_id', 'store_id', 'day', 'amount'])]
 class DepositDay extends Model
 {
     public $timestamps = false;
@@ -14,4 +14,11 @@ class DepositDay extends Model
     protected $primaryKey = null;
 
     public $incrementing = false;
+
+    protected function casts(): array
+    {
+        return [
+            'amount' => 'decimal:2',
+        ];
+    }
 }

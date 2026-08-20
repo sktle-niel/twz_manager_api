@@ -164,7 +164,25 @@ class DepositController extends Controller
             ]);
         }
 
-        $deposit = $this->record($request, $payload, $slip, $sha, $covers, $amount, $online, $expected, $matched);
+        // Build a simple map of per-day expected values so the record() call can
+        // persist per-day amounts (full for earlier days, the manual override for
+        // the last covered day). This enables true partial-day coverage tracking.
+        $pendingExpected = $pending->map(fn ($v) => (float) $v['expected'])->toArray();
+
+        $deposit = $this->record(
+            $request,
+            $payload,
+            $slip,
+            $sha,
+            $covers,
+            $amount,
+            $online,
+            $expected,
+            $matched,
+            $pendingExpected,
+            $lastAmount,
+            $lastDay,
+        );
 
         return response()->json($deposit->toWire());
     }
@@ -186,6 +204,9 @@ class DepositController extends Controller
         float $online,
         float $expected,
         bool $matched,
+        array $pendingExpected,
+        float $lastAmount,
+        string $lastDay,
     ): Deposit {
         $slipPath = $slip->store("receipts/slips/{$payload['storeId']}");
 
@@ -193,7 +214,7 @@ class DepositController extends Controller
            days would sit in no batch, and its days would still read pending.
            Files are stored before it — a rollback strands a photo at worst,
            never a row pointing at a photo that is not there. */
-        $deposit = DB::transaction(function () use ($request, $payload, $sha, $covers, $amount, $online, $expected, $matched, $slipPath) {
+        $deposit = DB::transaction(function () use ($request, $payload, $sha, $covers, $amount, $online, $expected, $matched, $slipPath, $pendingExpected, $lastAmount, $lastDay) {
             $deposit = Deposit::query()->create([
                 'store_id' => $payload['storeId'],
                 'day' => $payload['day'],
@@ -209,10 +230,15 @@ class DepositController extends Controller
             ]);
 
             foreach ($covers as $day) {
+                $dayAmount = ($day === $lastDay)
+                    ? $lastAmount
+                    : (array_key_exists($day, $pendingExpected) ? $pendingExpected[$day] : null);
+
                 DepositDay::query()->create([
                     'deposit_id' => $deposit->id,
                     'store_id' => $payload['storeId'],
                     'day' => $day,
+                    'amount' => $dayAmount,
                 ]);
             }
             foreach ($this->files($request, 'discrepancyProof') as $proofFile) {
