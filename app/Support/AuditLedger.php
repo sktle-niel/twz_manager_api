@@ -123,6 +123,10 @@ class AuditLedger
             $slot = &$rows[$key($cover->store_id, $cover->day)];
             $slot ??= $blank($cover->store_id, $cover->day);
             $slot['depositId'] = $cover->deposit_id;
+            // If the deposit_days.amount column exists, keep it per-day to
+            // represent partial coverage for that specific day. Otherwise it
+            // will be null and the code below falls back to the deposit total.
+            $slot['depositedDayAmount'] = $cover->amount !== null ? (float) $cover->amount : null;
             unset($slot);
         }
 
@@ -143,7 +147,9 @@ class AuditLedger
                     'expenses' => $row['expenses'],
                     'advances' => $row['advances'],
                     'expected' => $expected,
-                    'deposited' => $deposit !== null ? (float) $deposit->amount : null,
+                    // Prefer per-day deposited amount when available; fall back
+                    // to the deposit's total amount for older records.
+                    'deposited' => $deposit !== null ? ($row['depositedDayAmount'] ?? (float) $deposit->amount) : null,
                     'online' => $deposit !== null ? (float) $deposit->online : null,
                     /* The batch the deposit answers: every day it covers, and
                        the expected sum it was judged against when recorded.

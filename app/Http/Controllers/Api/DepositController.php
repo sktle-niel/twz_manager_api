@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Carbon\Carbon;
 
 /*
  * Deposits: the record a bank slip becomes. The expected figure a deposit is
@@ -72,10 +73,11 @@ class DepositController extends Controller
             'day' => ['required', 'date_format:Y-m-d'],
             'amount' => ['required', 'numeric', 'gt:0'],
             'online' => ['sometimes', 'numeric', 'gte:0'],
-            'reference' => ['required', 'string', 'max:120'],
             'covers' => ['required', 'array', 'min:1'],
             'covers.*' => ['required', 'date_format:Y-m-d'],
             'discrepancyReason' => ['sometimes', 'string', 'max:1000'],
+            'depositedAt' => ['sometimes', 'date'],
+            'cashIncludedLastDay' => ['sometimes', 'numeric', 'gte:0'],
         ])->validate();
 
         if (! $this->allowed($request->user(), [$payload['storeId']])) {
@@ -132,12 +134,26 @@ class DepositController extends Controller
             }
         }
 
-        $expected = round(
-            collect($covers)->sum(fn (string $day) => (float) $pending->get($day)['expected']),
-            2,
-        );
+        // Handle manual partial-day inclusion for the last covered day.
         $amount = round((float) $payload['amount'], 2);
         $online = round((float) ($payload['online'] ?? 0), 2);
+
+        // Split covers into earlier full days and the last day
+        $coversCopy = $covers;
+        $lastDay = array_pop($coversCopy);
+        $earlierDays = $coversCopy;
+
+        $expectedFull = round(
+            collect($earlierDays)->sum(fn (string $day) => (float) $pending->get($day)['expected']),
+            2,
+        );
+
+        $lastAmount = isset($payload['cashIncludedLastDay'])
+            ? round((float) $payload['cashIncludedLastDay'], 2)
+            : (float) $pending->get($lastDay)['expected'];
+
+        $expected = round($expectedFull + $lastAmount, 2);
+
         // Cash on the slip plus what came in online, in centavos, against expected
         $matched = (int) round($amount * 100) + (int) round($online * 100)
             === (int) round($expected * 100);
@@ -148,7 +164,25 @@ class DepositController extends Controller
             ]);
         }
 
-        $deposit = $this->record($request, $payload, $slip, $sha, $covers, $amount, $online, $expected, $matched);
+        // Build a simple map of per-day expected values so the record() call can
+        // persist per-day amounts (full for earlier days, the manual override for
+        // the last covered day). This enables true partial-day coverage tracking.
+        $pendingExpected = $pending->map(fn ($v) => (float) $v['expected'])->toArray();
+
+        $deposit = $this->record(
+            $request,
+            $payload,
+            $slip,
+            $sha,
+            $covers,
+            $amount,
+            $online,
+            $expected,
+            $matched,
+            $pendingExpected,
+            $lastAmount,
+            $lastDay,
+        );
 
         return response()->json($deposit->toWire());
     }
@@ -170,6 +204,9 @@ class DepositController extends Controller
         float $online,
         float $expected,
         bool $matched,
+        array $pendingExpected,
+        float $lastAmount,
+        string $lastDay,
     ): Deposit {
         $slipPath = $slip->store("receipts/slips/{$payload['storeId']}");
 
@@ -177,7 +214,7 @@ class DepositController extends Controller
            days would sit in no batch, and its days would still read pending.
            Files are stored before it — a rollback strands a photo at worst,
            never a row pointing at a photo that is not there. */
-        $deposit = DB::transaction(function () use ($request, $payload, $sha, $covers, $amount, $online, $expected, $matched, $slipPath) {
+        $deposit = DB::transaction(function () use ($request, $payload, $sha, $covers, $amount, $online, $expected, $matched, $slipPath, $pendingExpected, $lastAmount, $lastDay) {
             $deposit = Deposit::query()->create([
                 'store_id' => $payload['storeId'],
                 'day' => $payload['day'],
@@ -187,14 +224,21 @@ class DepositController extends Controller
                     'slip_path' => (string) $slipPath,
                 'slip_sha' => $sha === false ? null : $sha,
                 'matched' => $matched,
-                'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),
+                    'discrepancy_reason' => $matched ? null : trim((string) $payload['discrepancyReason']),
+                'deposited_at' => isset($payload['depositedAt']) ? Carbon::parse($payload['depositedAt'])->toDateTimeString() : null,
+                'cash_included_last_day' => isset($payload['cashIncludedLastDay']) ? round((float) $payload['cashIncludedLastDay'], 2) : null,
             ]);
 
             foreach ($covers as $day) {
+                $dayAmount = ($day === $lastDay)
+                    ? $lastAmount
+                    : (array_key_exists($day, $pendingExpected) ? $pendingExpected[$day] : null);
+
                 DepositDay::query()->create([
                     'deposit_id' => $deposit->id,
                     'store_id' => $payload['storeId'],
                     'day' => $day,
+                    'amount' => $dayAmount,
                 ]);
             }
             foreach ($this->files($request, 'discrepancyProof') as $proofFile) {
