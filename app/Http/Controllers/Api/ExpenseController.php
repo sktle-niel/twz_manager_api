@@ -71,6 +71,9 @@ class ExpenseController extends Controller
             if ($this->dayClosed($item['storeId'], $item['day'])) {
                 return $this->closedDay($item['day']);
             }
+            if ($refusal = $this->dayOutOfRange($item['storeId'], $item['day'])) {
+                return $refusal;
+            }
             foreach ($this->files($request, "receipts.{$i}") as $file) {
                 if (! $this->isPhoto($file)) {
                     return $this->badPhoto();

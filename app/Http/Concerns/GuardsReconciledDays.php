@@ -3,12 +3,24 @@
 namespace App\Http\Concerns;
 
 use App\Models\DepositDay;
+use App\Models\Store;
+use App\Support\AuditLedger;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 
 /*
- * The one rule every day-scoped write shares: a day covered by a deposit is
- * reconciled, its figures are what the owner matched against, and nothing —
- * expense or advance — may quietly edit them after.
+ * The rules every day-scoped write shares.
+ *
+ * One: a day covered by a deposit is reconciled, its figures are what the
+ * owner matched against, and nothing — expense or advance — may quietly edit
+ * them after.
+ *
+ * Two: the day has to be one the ledger will actually reconcile. Outside that
+ * window the spend still saves and is then deducted from nothing: a day before
+ * the ledger's start day carries no audit row at all, and a day in the
+ * branch's future stays `open` forever, so it never joins a deposit. Either
+ * way real money sits recorded and invisible, which is the one thing this app
+ * exists to prevent.
  */
 trait GuardsReconciledDays
 {
@@ -23,5 +35,36 @@ trait GuardsReconciledDays
             ['message' => "{$day} is already covered by a deposit, so its figures are final."],
             422,
         );
+    }
+
+    /**
+     * Null when the day is one the ledger will reconcile; the refusal
+     * otherwise. Today counts — a day stays `open` until the branch's own
+     * midnight passes, and spend logged during it is deducted the moment the
+     * day turns pending.
+     */
+    private function dayOutOfRange(string $storeId, string $day): ?JsonResponse
+    {
+        $start = AuditLedger::startDay();
+        if ($start !== null && $day < $start) {
+            return response()->json(
+                ['message' => "The ledger begins on {$start}, so {$day} can never be reconciled."],
+                422,
+            );
+        }
+
+        /* The branch's own clock — the same one the ledger calls today */
+        $today = CarbonImmutable::now(
+            Store::query()->find($storeId)?->timezone ?? 'Asia/Manila',
+        )->format('Y-m-d');
+
+        if ($day > $today) {
+            return response()->json(
+                ['message' => "{$day} has not happened yet at this branch. Check the date."],
+                422,
+            );
+        }
+
+        return null;
     }
 }

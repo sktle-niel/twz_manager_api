@@ -19,6 +19,7 @@ class Deposit extends Model
             'online' => 'decimal:2',
             'expected' => 'decimal:2',
             'matched' => 'boolean',
+            'deposited_at' => 'datetime',
         ];
     }
 
@@ -42,7 +43,11 @@ class Deposit extends Model
             'covers' => $this->days->pluck('day')->sort()->values(),
             'slipUrl' => "/api/files/{$this->slip_path}",
             'matched' => $this->matched,
-            'depositedAt' => $this->deposited_at ? (string) $this->deposited_at : null,
+            /* An instant, in the same UTC ISO-8601 shape Expense and Advance
+               send. Without the cast this went out as a bare 'Y-m-d H:i:s',
+               which a browser reads as ITS OWN local time — eight hours adrift
+               of the shop, and silently so. */
+            'depositedAt' => $this->deposited_at?->toIso8601ZuluString(),
             'cashIncludedLastDay' => $this->cash_included_last_day !== null ? (float) $this->cash_included_last_day : null,
         ];
     }

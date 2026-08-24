@@ -123,10 +123,12 @@ class AuditLedger
             $slot = &$rows[$key($cover->store_id, $cover->day)];
             $slot ??= $blank($cover->store_id, $cover->day);
             $slot['depositId'] = $cover->deposit_id;
-            // If the deposit_days.amount column exists, keep it per-day to
-            // represent partial coverage for that specific day. Otherwise it
-            // will be null and the code below falls back to the deposit total.
-            $slot['depositedDayAmount'] = $cover->amount !== null ? (float) $cover->amount : null;
+            /* How much of this day the deposit was judged to cover — the day's
+               expected, or the manual override on the last covered day. It is a
+               coverage share, NOT cash, so it never becomes the row's
+               `deposited`; nothing reads it until the partial-day feature is
+               finished on the client side. */
+            $slot['dayCovered'] = $cover->amount !== null ? (float) $cover->amount : null;
             unset($slot);
         }
 
@@ -147,9 +149,18 @@ class AuditLedger
                     'expenses' => $row['expenses'],
                     'advances' => $row['advances'],
                     'expected' => $expected,
-                    // Prefer per-day deposited amount when available; fall back
-                    // to the deposit's total amount for older records.
-                    'deposited' => $deposit !== null ? ($row['depositedDayAmount'] ?? (float) $deposit->amount) : null,
+                    /* The cash the bank actually received, whole. A batch repeats
+                       it on every day it covers — `depositCovers` and
+                       `depositExpected` below are what keep that honest, and the
+                       History page collapses the batch into one line.
+
+                       Never the per-day share: `deposit_days.amount` holds how
+                       much of that day the deposit was judged to cover, which is
+                       the day's EXPECTED, not money. Publishing it here made every
+                       row report `deposited` equal to `expected` — the figures said
+                       the day balanced while the status chip said discrepancy, and
+                       the real shortfall was invisible. */
+                    'deposited' => $deposit !== null ? (float) $deposit->amount : null,
                     'online' => $deposit !== null ? (float) $deposit->online : null,
                     /* The batch the deposit answers: every day it covers, and
                        the expected sum it was judged against when recorded.
@@ -183,10 +194,16 @@ class AuditLedger
             Store::query()->find($storeId)?->timezone ?? 'Asia/Manila',
         )->format('Y-m-d');
 
-        $first = Receipt::query()->where('store_id', $storeId)->min('day');
-        if ($first === null) {
-            $first = Expense::query()->where('store_id', $storeId)->min('day');
-        }
+        /* The earliest day this branch has anything on — takings, spend, or a
+           draw. Starting from receipts alone left spend logged before the
+           branch's first sale outside every pending window: it showed in the
+           history, but no deposit was ever asked to answer for it. */
+        $first = collect([
+            Receipt::query()->where('store_id', $storeId)->min('day'),
+            Expense::query()->where('store_id', $storeId)->min('day'),
+            Advance::query()->where('store_id', $storeId)->min('day'),
+        ])->filter()->min();
+
         if ($first === null) {
             return collect();
         }

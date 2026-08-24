@@ -58,6 +58,9 @@ class AdvanceController extends Controller
         if ($this->dayClosed($fields['storeId'], $fields['day'])) {
             return $this->closedDay($fields['day']);
         }
+        if ($refusal = $this->dayOutOfRange($fields['storeId'], $fields['day'])) {
+            return $refusal;
+        }
 
         $advance = Advance::query()->create([
             'store_id' => $fields['storeId'],
