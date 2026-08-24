@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Concerns\ReadsBranchScope;
 use App\Http\Controllers\Controller;
 use App\Models\Receipt;
+use App\Models\ReceiptItem;
 use App\Services\Loyverse\ReceiptSync;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -87,5 +88,64 @@ class SalesController extends Controller
             'hour' => (int) $row->hour,
             'amount' => (float) $row->amount,
         ]));
+    }
+
+    /**
+     * GET /api/sales/items?storeId=…&from=…&to=…
+     *
+     * What was actually sold, item by item, split into the goods that make
+     * up net sales and the services and labor that never do. Both are real
+     * money over the counter; only the first is the branch's to bank, and
+     * the split here is the same one the ledger runs on — the `excluded`
+     * flag was decided when the receipt was pulled.
+     *
+     * One branch at a time: this is the manager's page, and the owner reads
+     * any branch through the same door.
+     */
+    public function items(Request $request): JsonResponse
+    {
+        $storeId = $this->requireStoreRange($request);
+
+        if (! $this->allowed($request->user(), [$storeId])) {
+            return $this->forbidden();
+        }
+
+        $this->sync->refreshIfStale();
+
+        /* The join only skips cancelled receipts — store and day are carried
+           on the line itself, so the range never filters through it */
+        $rows = ReceiptItem::query()
+            ->join('receipts', 'receipts.receipt_number', '=', 'receipt_items.receipt_number')
+            ->where('receipts.cancelled', false)
+            ->where('receipt_items.store_id', $storeId)
+            ->whereBetween('receipt_items.day', [
+                (string) $request->query('from'),
+                (string) $request->query('to'),
+            ])
+            ->groupBy('receipt_items.sku', 'receipt_items.name', 'receipt_items.excluded')
+            ->selectRaw(
+                'receipt_items.sku AS sku, receipt_items.name AS name, '
+                .'receipt_items.excluded AS excluded, '
+                .'ROUND(SUM(receipt_items.quantity), 3) AS qty, '
+                .'ROUND(SUM(receipt_items.gross), 2) AS amount',
+            )
+            ->orderByDesc('amount')
+            ->get();
+
+        [$labor, $parts] = $rows->partition(fn ($row) => (bool) $row->excluded);
+
+        $shape = fn ($row) => [
+            'sku' => $row->sku,
+            'name' => $row->name,
+            'quantity' => (float) $row->qty,
+            'amount' => (float) $row->amount,
+        ];
+
+        return response()->json([
+            'parts' => $parts->map($shape)->values(),
+            'labor' => $labor->map($shape)->values(),
+            'partsTotal' => round($parts->sum(fn ($row) => (float) $row->amount), 2),
+            'laborTotal' => round($labor->sum(fn ($row) => (float) $row->amount), 2),
+        ]);
     }
 }

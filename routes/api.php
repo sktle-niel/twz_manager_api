@@ -45,6 +45,10 @@ Route::middleware('auth:web')->group(function () {
     Route::get('/sales/daily', [SalesController::class, 'daily']);
     Route::get('/sales/hourly', [SalesController::class, 'hourly']);
 
+    /* What was sold, item by item: the goods that make net sales, and the
+       services and labor that never do, kept apart but both shown */
+    Route::get('/sales/items', [SalesController::class, 'items']);
+
     /* The audit spine: what was taken, spent, and deposited, day by day */
     Route::get('/audits', [AuditController::class, 'index']);
     Route::get('/deposits/pending', [DepositController::class, 'pending']);

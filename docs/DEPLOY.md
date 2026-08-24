@@ -34,18 +34,34 @@ git + SSH flow.
    destination `public_html`. You now have `public_html/app/` with `public/`
    inside.
 6. Point the site's **document root** at `app/public` (or create a subdomain
-   with that custom folder — the field is relative to `public_html/`).
+   with that custom folder — the field is relative to `public_html/`). Do
+   this straight after the extract: until it is done the whole app sits under
+   the served tree, and only the shipped root `.htaccess` stands between the
+   web and `.env`. That file denies dotfiles and the extensions the PWA never
+   serves, so it cannot break `app/public` — but the document root is the
+   real fix, not the guard.
 7. In File Manager, open `app/.env` → fill in `APP_URL` and the three `DB_*`
    placeholders → save.
 8. In a browser, visit `https://YOURDOMAIN/setup/THE_SETUP_KEY?start=YYYY-MM-DD`
    (the exact URL is written inside `.env` beside `SETUP_KEY`). One visit
    migrates, seeds, sets the ledger's start day, and caches — the JSON
    answer lists what happened.
-9. Back in File Manager, **delete the two SETUP_KEY lines** from `.env`.
+9. Back in File Manager, **delete the `SETUP_KEY` line** from `.env`. That is
+   genuinely enough: the installer caches routes but deliberately NOT the
+   config, so `.env` remains the only place the key lives — and remains
+   editable for everything else. (It used to run `config:cache`, which baked
+   every value including the key into `bootstrap/cache/config.php`; deleting
+   the line then closed nothing, and later `.env` edits did nothing either.)
 10. hPanel → **Advanced → Cron Jobs** → one entry:
     `* * * * * /usr/bin/php /home/USERNAME/domains/YOURDOMAIN.com/app/artisan schedule:run >> /dev/null 2>&1`
 11. Run the smoke checks at the bottom, then **change every seeded password
     and the reset PIN** inside the app.
+12. Sales figures fill in on their own once the cron runs. The **Sales page**
+    needs one extra pull, because line items were never stored before it
+    existed and the past therefore carries none:
+    `php artisan twz:sync-sales --days=30` — or simply wait, since the
+    nightly reconcile walks the trailing week every night. Without SSH, the
+    wait is the only route.
 
 **Later updates without SSH:** re-run `npm run stage`, then upload just the
 changed pieces through File Manager — `public/app.html` + `public/assets/`
