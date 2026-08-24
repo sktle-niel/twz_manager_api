@@ -42,7 +42,7 @@ class DepositController extends Controller
         }
 
         $deposits = Deposit::query()
-            ->with('days')
+            ->with(['days', 'proofs'])
             ->where('store_id', $storeId)
             ->whereBetween('day', [$request->query('from'), $request->query('to')])
             ->orderByDesc('day')
@@ -251,7 +251,7 @@ class DepositController extends Controller
             return $deposit;
         });
 
-        return $deposit->load('days');
+        return $deposit->load(['days', 'proofs']);
     }
 
     private function pesos(float $value): string

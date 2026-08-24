@@ -169,7 +169,10 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    /* A missing key used to mean "send this cookie over plain HTTP too".
+       Production defaults to secure now, so forgetting the variable fails
+       safe; local HTTP development sets it false explicitly. */
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV') === 'production'),
 
     /*
     |--------------------------------------------------------------------------

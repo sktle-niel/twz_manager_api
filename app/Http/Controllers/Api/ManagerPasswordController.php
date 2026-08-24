@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 
@@ -65,6 +66,19 @@ class ManagerPasswordController extends Controller
             // Any device still holding a "remember me" cookie is signed out
             'remember_token' => Str::random(60),
         ])->save();
+
+        /*
+         * Every live session of theirs ends now, the way disabling an
+         * account already does (ManagerController::setActive).
+         *
+         * This flow exists because somebody lost control of an account — a
+         * phone left in a tricycle, a manager who walked out. Rotating
+         * remember_token alone left whoever was already signed in still
+         * holding that branch: its expenses, its advances, its deposits.
+         * The new password has to take the branch back, not just guard the
+         * next sign-in.
+         */
+        DB::table('sessions')->where('user_id', $target->id)->delete();
 
         return response()->noContent();
     }

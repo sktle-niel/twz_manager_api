@@ -53,7 +53,6 @@ class DepositRecordTest extends TestCase
             'storeId' => 'arevalo',
             'day' => '2026-08-02',
             'amount' => 4700.0,
-            'reference' => 'BDO-4417',
             'covers' => ['2026-08-01'],
             ...$overrides,
         ];
@@ -198,7 +197,7 @@ class DepositRecordTest extends TestCase
         $this->actingAs($this->manager())->post('/api/deposits', [
             'payload' => json_encode([
                 'storeId' => 'arevalo', 'day' => '2026-08-02', 'amount' => 4700.0,
-                'reference' => 'BDO-4417', 'covers' => ['2026-08-01'],
+                'covers' => ['2026-08-01'],
             ]),
         ], ['Accept' => 'application/json'])
             ->assertStatus(422)

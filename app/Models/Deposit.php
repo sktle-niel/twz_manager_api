@@ -28,6 +28,12 @@ class Deposit extends Model
         return $this->hasMany(DepositDay::class);
     }
 
+    /** The photos a manager attached to explain a difference */
+    public function proofs(): HasMany
+    {
+        return $this->hasMany(DepositProof::class);
+    }
+
     /** @return array<string, mixed> The wire shape of docs/API.md */
     public function toWire(): array
     {
@@ -43,6 +49,12 @@ class Deposit extends Model
             'covers' => $this->days->pluck('day')->sort()->values(),
             'slipUrl' => "/api/files/{$this->slip_path}",
             'matched' => $this->matched,
+            /* The evidence behind a discrepancy. Collected since the feature
+               shipped and stored ever since, but never sent anywhere — so the
+               owner opening a mismatched deposit saw the manager's reason and
+               none of what they photographed to back it up. Same door and same
+               branch check as the slip. */
+            'proofUrls' => $this->proofs->map(fn (DepositProof $p) => "/api/files/{$p->path}")->values()->all(),
             /* An instant, in the same UTC ISO-8601 shape Expense and Advance
                send. Without the cast this went out as a bare 'Y-m-d H:i:s',
                which a browser reads as ITS OWN local time — eight hours adrift

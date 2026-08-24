@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
@@ -42,6 +43,23 @@ class AccountPasswordController extends Controller
                whoever just proved they hold the password decides who stays */
             'remember_token' => Str::random(60),
         ])->save();
+
+        /*
+         * And every other LIVE session with it.
+         *
+         * Rotating remember_token only drops the remembered-device cookies.
+         * A phone that is already signed in holds a row in `sessions`, and
+         * nothing was deleting it — so changing a password did not remove
+         * somebody already inside, which is the one thing a person changing
+         * their password believes it does.
+         *
+         * This session survives: whoever just proved they hold the password
+         * stays where they are.
+         */
+        DB::table('sessions')
+            ->where('user_id', $user->id)
+            ->where('id', '!=', $request->session()->getId())
+            ->delete();
 
         return response()->noContent();
     }

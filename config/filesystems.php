@@ -33,7 +33,10 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            /* This disk holds deposit slips and expense receipts. `serve`
+               registers a framework route for them; Laravel 13 guards it and
+               nothing here uses it, so the route is pure attack surface. */
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

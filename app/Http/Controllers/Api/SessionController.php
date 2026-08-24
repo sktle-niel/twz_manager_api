@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\FailedSignIn;
 use App\Models\SignIn;
 use App\Models\User;
 use App\Support\DeviceName;
@@ -56,6 +57,10 @@ class SessionController extends Controller
            form must not reveal which accounts exist */
         if ($user === null || ! Hash::check($credentials['password'], $user->password)) {
             RateLimiter::hit($throttleKey, 60);
+            /* The throttle stops a guessing run; this is what lets the owner
+               find out it happened. Nothing here reaches the response — the
+               person knocking still gets one message either way. */
+            $this->recordFailure($request, $identifier, $user !== null);
 
             return response()->json(
                 ['message' => 'That username and password do not match.'],
@@ -72,6 +77,17 @@ class SessionController extends Controller
             );
         }
 
+        /*
+         * Thirty days, against Laravel's default of four hundred.
+         *
+         * The remembered cookie is the longest-lived credential this app
+         * mints, and the box that asks for it is ticked by default, so it is
+         * what actually decides how long a phone left in a tricycle stays
+         * useful to whoever finds it. Short enough to bound that; long enough
+         * that a shop phone is not asking for a password every week, which is
+         * how passwords end up written under the counter.
+         */
+        Auth::guard('web')->setRememberDuration(43200);
         Auth::guard('web')->login($user, (bool) ($credentials['remember'] ?? false));
         // A fresh id on every sign-in, so a pre-auth cookie cannot be fixated
         $request->session()->regenerate();
@@ -98,6 +114,30 @@ class SessionController extends Controller
      * session id, so "this device" follows) instead of stacking a new entry
      * every shop morning. Kept short — the last 15 tell the story.
      */
+    /**
+     * An attempt that failed, kept for the owner. No password, hashed or
+     * otherwise, and the identifier is truncated because the field accepts
+     * whatever was typed into it.
+     */
+    private function recordFailure(Request $request, string $identifier, bool $known): void
+    {
+        FailedSignIn::query()->create([
+            'identifier' => mb_substr($identifier, 0, 120),
+            'ip' => (string) $request->ip(),
+            ...DeviceName::parse($request->userAgent()),
+            'known' => $known,
+            'at' => now(),
+        ]);
+
+        /* Bounded the way the device log is, so a patient guessing run cannot
+           fill a shared host's disk with its own history */
+        FailedSignIn::query()
+            ->orderByDesc('at')
+            ->skip(200)->take(500)
+            ->pluck('id')
+            ->each(fn (string $old) => FailedSignIn::query()->whereKey($old)->delete());
+    }
+
     private function recordSignIn(Request $request, User $user): void
     {
         $named = DeviceName::parse($request->userAgent());

@@ -1,0 +1,14 @@
+# storage/ holds deposit slips, expense receipts, the session table's spill
+# and the application log. None of it is web content. Only app/public is
+# meant to be served, so if this directory is ever reachable over HTTP —
+# a document root pointed one level too high, a stray copy under
+# public_html — the answer is no, for everything, rather than a directory
+# listing of the shop's financial photographs.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
+Options -Indexes

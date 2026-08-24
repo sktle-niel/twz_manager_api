@@ -79,8 +79,8 @@ class AuditSpineTest extends TestCase
                 'online' => null,
                 'depositCovers' => null,
                 'depositExpected' => null,
-                'reference' => null,
                 'slipUrl' => null,
+                'proofUrls' => null,
                 'status' => 'pending',
             ]]);
     }
@@ -100,15 +100,14 @@ class AuditSpineTest extends TestCase
         $this->sale('r-1', '2026-08-01', 5000.0);
         $deposit = Deposit::query()->create([
             'store_id' => 'arevalo', 'day' => '2026-08-02', 'amount' => 5000.0,
-            'reference' => 'BDO-123', 'slip_path' => 'receipts/slips/x.jpg', 'matched' => true,
+            'slip_path' => 'receipts/slips/x.jpg', 'matched' => true,
         ]);
         DepositDay::query()->create(['deposit_id' => $deposit->id, 'store_id' => 'arevalo', 'day' => '2026-08-01']);
 
         $this->actingAs($this->manager())
             ->getJson('/api/audits?storeIds=arevalo&from=2026-08-01&to=2026-08-01')
             ->assertJsonPath('0.status', 'matched')
-            ->assertJsonPath('0.deposited', 5000)
-            ->assertJsonPath('0.reference', 'BDO-123');
+            ->assertJsonPath('0.deposited', 5000);
     }
 
     public function test_days_before_the_ledger_start_are_settled_history(): void
@@ -210,7 +209,7 @@ class AuditSpineTest extends TestCase
     {
         $deposit = Deposit::query()->create([
             'store_id' => 'arevalo', 'day' => '2026-08-02', 'amount' => 1.0,
-            'reference' => 'x', 'slip_path' => 'receipts/slips/x.jpg', 'matched' => true,
+            'slip_path' => 'receipts/slips/x.jpg', 'matched' => true,
         ]);
         DepositDay::query()->create(['deposit_id' => $deposit->id, 'store_id' => 'arevalo', 'day' => '2026-08-01']);
 
