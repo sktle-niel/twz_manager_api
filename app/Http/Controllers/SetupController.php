@@ -44,17 +44,27 @@ class SetupController extends Controller
             $done['start_day'] = Setting::read('audit_start_day') ?? 'not set — pass ?start=YYYY-MM-DD';
         }
 
-        /* A cached testing/dev config poisons every run after it — the boot
-           speedup is only worth having on the real server */
+        /*
+         * Routes only, deliberately.
+         *
+         * `config:cache` bakes every .env value into bootstrap/cache/config.php
+         * and the app then stops reading .env at all — which on a File-Manager
+         * deploy is a trap twice over. Editing .env afterwards silently does
+         * nothing, and deleting SETUP_KEY from it does NOT close this door,
+         * because the cached copy still carries the key: the installer would
+         * stay open forever while its own instructions said otherwise.
+         *
+         * Route caching has neither problem. It holds no secrets and reads no
+         * environment, and it is where most of the boot saving was anyway.
+         */
         if (app()->environment('production')) {
-            Artisan::call('config:cache');
             Artisan::call('route:cache');
-            $done['caches'] = 'config and routes cached';
+            $done['caches'] = 'routes cached; config left uncached on purpose, so .env stays editable';
         } else {
             $done['caches'] = 'skipped outside production';
         }
 
-        $done['next'] = 'Delete the SETUP_KEY line from .env, set the cron entry, and sign in.';
+        $done['next'] = 'Delete the SETUP_KEY line from .env, add the cron entry, then sign in and change every password and the reset PIN.';
 
         return response()->json($done);
     }

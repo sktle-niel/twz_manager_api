@@ -1,0 +1,33 @@
+# This directory is the APPLICATION, not the web root. Only app/public is
+# meant to be served, and once the document root points there this file is
+# never consulted at all.
+#
+# It exists for the window BEFORE that: while the app still sits under
+# public_html, .env is a plain readable file to anyone who guesses the URL,
+# and it holds the app key, the database password and the Loyverse token —
+# which grants full access to the whole merchant account.
+#
+# Only extensions the PWA never serves are denied, so this can never break
+# app/public even if the server does consult it.
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+    <FilesMatch "\.(env|log|json|lock|md|mjs|yml|yaml|xml|sqlite)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^\.">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "\.(env|log|json|lock|md|mjs|yml|yaml|xml|sqlite)$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+Options -Indexes

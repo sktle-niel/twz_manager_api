@@ -3,6 +3,7 @@
 namespace App\Services\Loyverse;
 
 use App\Models\Receipt;
+use App\Models\ReceiptItem;
 use App\Models\Setting;
 use App\Models\Store;
 use Carbon\CarbonImmutable;
@@ -188,8 +189,10 @@ class ReceiptSync
         $local = $instant->setTimezone($store->timezone);
         $removed = $this->excludedShare($raw);
 
+        $number = (string) $raw['receipt_number'];
+
         Receipt::query()->updateOrCreate(
-            ['receipt_number' => (string) $raw['receipt_number']],
+            ['receipt_number' => $number],
             [
                 'store_id' => $store->id,
                 'type' => $type,
@@ -204,6 +207,57 @@ class ReceiptSync
                 )->utc(),
             ],
         );
+
+        $this->replaceItems($number, $store, $local->format('Y-m-d'), $sign, $raw);
+    }
+
+    /**
+     * The receipt's lines, rewritten whole.
+     *
+     * A correction in Loyverse arrives as an update to the same
+     * receipt_number and its lines may have changed — deleting first is what
+     * stops a line that was removed upstream from surviving here forever.
+     *
+     * The `excluded` verdict is taken here, against the list as it stands at
+     * ingest, for the same reason `receipts.gross` is netted here: both must
+     * tell one story, and a page that re-judged the past against today's list
+     * would disagree with the figures every deposit was matched against.
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function replaceItems(string $number, Store $store, string $day, int $sign, array $raw): void
+    {
+        ReceiptItem::query()->where('receipt_number', $number)->delete();
+
+        $skus = $this->excludedSkus();
+        $rows = [];
+
+        foreach ((array) ($raw['line_items'] ?? []) as $line) {
+            $sku = trim((string) ($line['sku'] ?? ''));
+            $quantity = (float) ($line['quantity'] ?? 1);
+            $gross = (float) ($line['total_money'] ?? 0);
+            $cost = (float) ($line['cost_total']
+                ?? (float) ($line['cost'] ?? 0) * $quantity);
+
+            $name = trim((string) ($line['item_name'] ?? $line['variant_name'] ?? ''));
+
+            $rows[] = [
+                'receipt_number' => $number,
+                'store_id' => $store->id,
+                'day' => $day,
+                'sku' => $sku === '' ? null : $sku,
+                'name' => $name === '' ? 'Unnamed item' : $name,
+                /* Signed with the receipt, so a refund line subtracts itself */
+                'quantity' => round($sign * $quantity, 3),
+                'gross' => round($sign * $gross, 2),
+                'cost' => round($sign * $cost, 2),
+                'excluded' => $sku !== '' && in_array($sku, $skus, true),
+            ];
+        }
+
+        if ($rows !== []) {
+            ReceiptItem::query()->insert($rows);
+        }
     }
 
     /**
