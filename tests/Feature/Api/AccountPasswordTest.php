@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /*
@@ -93,5 +94,34 @@ class AccountPasswordTest extends TestCase
             'identifier' => 'twowheelszone',
             'password' => 'bagong-password',
         ])->assertOk();
+    }
+
+    /*
+     * Changing a password is what a person does after they think somebody
+     * else has it. Rotating remember_token alone only drops the remembered
+     * cookies — a device already signed in keeps a live session, and that is
+     * exactly the device being changed away from.
+     */
+    public function test_changing_a_password_ends_the_other_live_sessions(): void
+    {
+        $manager = $this->manager();
+        $other = User::query()->where('username', 'joel.sarabia')->firstOrFail();
+
+        DB::table('sessions')->insert([
+            ['id' => 'another-device', 'user_id' => $manager->id,
+             'ip_address' => '127.0.0.1', 'user_agent' => 'the other phone',
+             'payload' => base64_encode('a:0:{}'), 'last_activity' => now()->getTimestamp()],
+            ['id' => 'a-different-account', 'user_id' => $other->id,
+             'ip_address' => '127.0.0.1', 'user_agent' => 'untouched',
+             'payload' => base64_encode('a:0:{}'), 'last_activity' => now()->getTimestamp()],
+        ]);
+
+        $this->actingAs($manager)
+            ->putJson('/api/account/password', ['current' => 'password', 'next' => 'bagong-password'])
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('sessions', ['id' => 'another-device']);
+        /* Only this account's doors close */
+        $this->assertDatabaseHas('sessions', ['id' => 'a-different-account']);
     }
 }

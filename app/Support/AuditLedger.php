@@ -75,6 +75,7 @@ class AuditLedger
             ->whereBetween('day', [$from, $to])
             ->get();
         $deposits = Deposit::query()
+            ->with('proofs')
             ->whereIn('id', $covers->pluck('deposit_id')->unique())
             ->get()
             ->keyBy('id');
@@ -171,6 +172,12 @@ class AuditLedger
                         : null,
                     'depositExpected' => $deposit?->expected !== null ? (float) $deposit->expected : null,
                     'slipUrl' => $deposit !== null ? "/api/files/{$deposit->slip_path}" : null,
+                    /* What the manager photographed to explain a difference.
+                       Collected since the feature shipped and never shown, so
+                       the owner read the reason with none of the evidence. */
+                    'proofUrls' => $deposit !== null
+                        ? $deposit->proofs->map(fn ($p) => "/api/files/{$p->path}")->values()
+                        : null,
                     'status' => match (true) {
                         $deposit !== null => $deposit->matched ? 'matched' : 'discrepancy',
                         $open => 'open',

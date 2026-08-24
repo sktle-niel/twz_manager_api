@@ -4,6 +4,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /*
@@ -159,5 +160,34 @@ class AdminPasswordResetTest extends TestCase
             ->assertNoContent();
 
         $this->assertNotSame($before, $this->manager()->fresh()->remember_token);
+    }
+
+    /*
+     * The point of the whole flow. This runs because somebody lost control
+     * of an account — a phone left behind, a manager who walked out. A new
+     * password that only guards the NEXT sign-in leaves whoever is already
+     * signed in still holding the branch.
+     */
+    public function test_a_reset_ends_the_live_sessions_it_was_called_about(): void
+    {
+        $target = $this->manager();
+        $other = $this->owner();
+
+        DB::table('sessions')->insert([
+            ['id' => 'the-lost-phone', 'user_id' => $target->id,
+             'ip_address' => '127.0.0.1', 'user_agent' => 'lost',
+             'payload' => base64_encode('a:0:{}'), 'last_activity' => now()->getTimestamp()],
+            ['id' => 'somebody-elses', 'user_id' => $other->id,
+             'ip_address' => '127.0.0.1', 'user_agent' => 'untouched',
+             'payload' => base64_encode('a:0:{}'), 'last_activity' => now()->getTimestamp()],
+        ]);
+
+        $this->actingAs($this->owner())
+            ->putJson($this->resetUrl(), ['pin' => self::PIN, 'password' => 'bagong-password'])
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('sessions', ['id' => 'the-lost-phone']);
+        /* Scoped to the account it was called about, and no further */
+        $this->assertDatabaseHas('sessions', ['id' => 'somebody-elses']);
     }
 }

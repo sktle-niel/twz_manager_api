@@ -32,9 +32,13 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(120)
                 ->by($request->user()?->id ?? $request->ip())
-                ->response(fn () => response()->json(
+                /* Laravel has already worked out Retry-After and the
+                   X-RateLimit-* pair; dropping them left the client with no
+                   way to know how long to wait, so it just asked again */
+                ->response(fn ($request, array $headers) => response()->json(
                     ['message' => 'Too many requests just now. Try again in a moment.'],
                     429,
+                    $headers,
                 ));
         });
 

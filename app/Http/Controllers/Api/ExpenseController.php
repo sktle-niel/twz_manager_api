@@ -50,7 +50,10 @@ class ExpenseController extends Controller
     {
         $payload = $this->payload($request);
         Validator::make($payload, [
-            'items' => ['required', 'array', 'min:1'],
+            /* A day's spend at one branch is single digits; 200 is a ceiling
+               the shop cannot reach by accident, and it stops a 371 KB body
+               from buying seconds of validation on a shared host */
+            'items' => ['required', 'array', 'min:1', 'max:200'],
             'items.*.storeId' => ['required', 'string'],
             'items.*.day' => ['required', 'date_format:Y-m-d'],
             'items.*.category' => ['required', 'string'],

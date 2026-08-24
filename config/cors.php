@@ -12,8 +12,16 @@ return [
 
     'allowed_methods' => ['*'],
 
+    /*
+     * No fallback. An unset FRONTEND_ORIGINS used to mean "trust
+     * localhost:5173", which quietly shipped a trusted origin to production
+     * — and because VerifyOriginOnUnsafeRequests folds this list into the
+     * origins it accepts WRITES from, the default was not merely a CORS
+     * courtesy. Development sets the variable explicitly; production leaves
+     * it empty, because the PWA is same-origin there and needs nothing.
+     */
     'allowed_origins' => array_values(array_filter(
-        explode(',', (string) env('FRONTEND_ORIGINS', 'http://localhost:5173')),
+        array_map('trim', explode(',', (string) env('FRONTEND_ORIGINS', ''))),
     )),
 
     'allowed_origins_patterns' => [],

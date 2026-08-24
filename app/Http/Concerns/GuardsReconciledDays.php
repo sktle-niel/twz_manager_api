@@ -24,6 +24,9 @@ use Illuminate\Http\JsonResponse;
  */
 trait GuardsReconciledDays
 {
+    /** @var array<string, string> Branch clocks, resolved once per request */
+    private array $timezoneMemo = [];
+
     private function dayClosed(string $storeId, string $day): bool
     {
         return DepositDay::query()->where('store_id', $storeId)->where('day', $day)->exists();
@@ -53,10 +56,10 @@ trait GuardsReconciledDays
             );
         }
 
-        /* The branch's own clock — the same one the ledger calls today */
-        $today = CarbonImmutable::now(
-            Store::query()->find($storeId)?->timezone ?? 'Asia/Manila',
-        )->format('Y-m-d');
+        /* The branch's own clock — the same one the ledger calls today.
+           Memoised because a batch of expenses asks about the same branch
+           once per item, and that was a query per item. */
+        $today = CarbonImmutable::now($this->timezoneOf($storeId))->format('Y-m-d');
 
         if ($day > $today) {
             return response()->json(
@@ -66,5 +69,11 @@ trait GuardsReconciledDays
         }
 
         return null;
+    }
+
+    private function timezoneOf(string $storeId): string
+    {
+        return $this->timezoneMemo[$storeId] ??=
+            Store::query()->find($storeId)?->timezone ?? 'Asia/Manila';
     }
 }

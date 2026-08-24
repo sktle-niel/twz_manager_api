@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\DepositController;
 use App\Http\Controllers\Api\ExpenseCategoryController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\FailedSignInController;
 use App\Http\Controllers\Api\FileController;
 use App\Http\Controllers\Api\ManagerController;
 use App\Http\Controllers\Api\ManagerPasswordController;
@@ -118,6 +119,10 @@ Route::middleware('auth:web')->group(function () {
         /* Recovery lives here now: a manager who is locked out asks the owner,
            and the owner sets a new password behind the PIN. Nothing is mailed
            anywhere, so nothing outside this door can start a reset. */
+        /* Who has been knocking. The sign-in form tells the person knocking
+           nothing; this tells the owner everything it knows. */
+        Route::get('/security/failed-sign-ins', [FailedSignInController::class, 'index']);
+
         Route::get('/settings/reset-pin', [ResetPinController::class, 'show']);
         Route::put('/settings/reset-pin', [ResetPinController::class, 'update']);
         Route::put('/managers/{manager}/password', [ManagerPasswordController::class, 'update']);

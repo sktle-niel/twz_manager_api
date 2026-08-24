@@ -21,7 +21,10 @@ trait ReadsBranchScope
     /** Validate the single-store day-range read and hand back its storeId. */
     private function requireStoreRange(Request $request): string
     {
-        $request->validate(['storeId' => ['required', 'string'], ...self::rangeRules()]);
+        /* Bounded: every caller of this one hydrates a model per row, so an
+           unbounded span is an unbounded response. /audits and /sales/daily
+           aggregate in SQL and stay on the plain rules. */
+        $request->validate(['storeId' => ['required', 'string'], ...self::boundedRangeRules()]);
 
         return (string) $request->query('storeId');
     }
@@ -48,6 +51,24 @@ trait ReadsBranchScope
     {
         return [
             'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ];
+    }
+
+    /**
+     * The same pair, with a ceiling on the span.
+     *
+     * For the reads that hydrate a model per row — expenses and deposits —
+     * an unbounded range is an unbounded response. 400 days sits above the
+     * widest window the UI can ask for (its broadest preset is this year),
+     * so nothing a person can click is refused.
+     *
+     * @return array<string, list<string>>
+     */
+    private static function boundedRangeRules(int $days = 400): array
+    {
+        return [
+            'from' => ['required', 'date_format:Y-m-d', 'after_or_equal:'.now()->subDays($days)->format('Y-m-d')],
             'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
         ];
     }

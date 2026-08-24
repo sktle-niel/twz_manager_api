@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /*
@@ -48,6 +49,13 @@ class SetPassword extends Command
             // Every remembered device is signed out along with the change
             'remember_token' => Str::random(60),
         ])->save();
+
+        /* And the live sessions, the way both HTTP password paths do. This
+           is the locked-out-owner door: it is reached over SSH precisely
+           because something went wrong, so leaving a signed-in device alive
+           would defeat the reason for running it. Nothing to preserve here —
+           a command line holds no session of its own. */
+        DB::table('sessions')->where('user_id', $user->id)->delete();
 
         $this->info("Password set for {$user->username} ({$user->role}).");
 

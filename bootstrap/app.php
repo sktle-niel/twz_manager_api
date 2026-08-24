@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureOwner;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\VerifyOriginOnUnsafeRequests;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -25,6 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
          * cookie, not a bearer token (docs/API.md, frontend repo). Origin
          * verification stands in for token CSRF — see the middleware.
          */
+        /* Every response, API and app shell alike — one origin, one policy */
+        $middleware->append(SecurityHeaders::class);
+
         $middleware->api(prepend: [
             EncryptCookies::class,
             AddQueuedCookiesToResponse::class,

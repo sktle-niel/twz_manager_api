@@ -87,8 +87,12 @@ class GlobalSearch
             ->sortByDesc('day')
             ->values();
 
+        /* withCount, not with: the filter only asks WHETHER a receipt
+           exists, and eager-loading every photo of every expense in the
+           90-day window was the single most expensive thing this search
+           did. The six that survive load theirs in shape(). */
         $expenses = Expense::query()
-            ->with('photos')
+            ->withCount('photos')
             ->whereIn('store_id', $storeIds)
             ->whereBetween('day', [$from, $to])
             ->orderByDesc('day')
@@ -103,13 +107,12 @@ class GlobalSearch
                     $this->dateWords($e->day),
                     $this->num($e->amount),
                     $e->at->timezone($stores[$e->store_id]->timezone ?? 'Asia/Manila')->format('g:i A'),
-                    $e->photos->isEmpty() ? 'no receipt' : 'receipt',
+                    $e->photos_count === 0 ? 'no receipt' : 'receipt',
                 )))
-            ->map(fn (Expense $e) => $e->toWire())
             ->values();
 
         $deposits = Deposit::query()
-            ->with('days')
+            ->with(['days', 'proofs'])
             ->whereIn('store_id', $storeIds)
             ->whereBetween('day', [$from, $to])
             ->orderByDesc('day')
@@ -120,7 +123,6 @@ class GlobalSearch
                 return ($hint === null || $this->hintHits($hint, [$d->day, ...$covered]))
                     && $match($this->hay(
                         'deposit slip',
-                        $d->reference,
                         $names[$d->store_id] ?? $d->store_id,
                         $d->matched ? 'Matched' : 'Discrepancy',
                         $this->signWord(
@@ -134,7 +136,6 @@ class GlobalSearch
                         implode(' ', array_map($this->dateWords(...), [$d->day, ...$covered])),
                     ));
             })
-            ->map(fn (Deposit $d) => $d->toWire())
             ->values();
 
         /* Accounts and branches are the owner's to see, and they carry no day
@@ -189,15 +190,36 @@ class GlobalSearch
         Collection $managers,
         Collection $branches,
     ): array {
+        /*
+         * `total` counts every match — the UI says "and N more" — but only
+         * PER_GROUP of them are ever sent, so only those are serialised.
+         * Serialising the whole match set first and slicing afterwards is
+         * what made a search over a busy quarter cost seconds of CPU.
+         */
         $group = fn (Collection $all) => [
             'items' => $all->take(self::PER_GROUP)->values()->all(),
             'total' => $all->count(),
         ];
 
+        /** Same, for groups whose rows are models until the last moment */
+        $wired = fn (Collection $all, callable $wire) => [
+            'items' => $wire($all->take(self::PER_GROUP)->values()),
+            'total' => $all->count(),
+        ];
+
         return [
             'days' => $group($days),
-            'expenses' => $group($expenses),
-            'deposits' => $group($deposits),
+            /* The photos of six expenses, in one query, instead of the
+               photos of every expense in the window */
+            'expenses' => $wired(
+                $expenses,
+                fn (Collection $page) => $page->load('photos')
+                    ->map(fn (Expense $e) => $e->toWire())->all(),
+            ),
+            'deposits' => $wired(
+                $deposits,
+                fn (Collection $page) => $page->map(fn (Deposit $d) => $d->toWire())->all(),
+            ),
             'managers' => $group($managers),
             'branches' => $group($branches),
         ];

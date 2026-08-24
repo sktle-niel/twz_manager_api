@@ -54,7 +54,7 @@ class SearchTest extends TestCase
         $deposit = Deposit::query()->create([
             'store_id' => 'arevalo', 'day' => $this->today,
             'amount' => 2520.0, 'online' => 0.0, 'expected' => 2520.0,
-            'reference' => '712063', 'slip_path' => 'receipts/deposits/x/slip.jpg',
+            'slip_path' => 'receipts/deposits/x/slip.jpg',
             'slip_sha' => str_repeat('a', 64), 'matched' => true,
         ]);
         DepositDay::query()->create([
@@ -121,16 +121,44 @@ class SearchTest extends TestCase
         );
     }
 
-    public function test_an_amount_and_a_reference_are_ordinary_tokens(): void
+    /*
+     * A deposit carries no reference any more — the column went with the
+     * slip photo becoming the identity. Its AMOUNT is what somebody hunting
+     * for it actually types, so that is what has to be findable.
+     */
+    public function test_an_amount_is_an_ordinary_token(): void
     {
-        $response = $this->search($this->manager(), '712063', ['arevalo'])->assertOk();
+        $response = $this->search($this->manager(), '2520', ['arevalo'])->assertOk();
         $this->assertSame(1, $response->json('deposits.total'));
-        $this->assertSame('712063', $response->json('deposits.items.0.reference'));
+        /* JSON drops the trailing zeroes on a whole-peso amount, so the
+           value is what matters here, not the type it arrives as */
+        $this->assertSame(2520.0, (float) $response->json('deposits.items.0.amount'));
 
         $this->assertSame(
             1,
             $this->search($this->manager(), '480', ['arevalo'])->assertOk()->json('expenses.total'),
         );
+    }
+
+    /*
+     * Only PER_GROUP rows are serialised and sent, but `total` must keep
+     * counting every match — the UI renders "and N more" from it. Slicing
+     * before counting is the one way the search-cost fix could have broken
+     * something, so it is pinned here.
+     */
+    public function test_the_total_counts_every_match_not_the_page(): void
+    {
+        for ($i = 0; $i < 50; $i++) {
+            Expense::query()->create([
+                'store_id' => 'arevalo', 'day' => $this->today, 'category' => 'Meals',
+                'note' => "kanin batch {$i}", 'amount' => 25.0, 'at' => now(),
+            ]);
+        }
+
+        $response = $this->search($this->manager(), 'kanin', ['arevalo'])->assertOk();
+
+        $this->assertSame(50, $response->json('expenses.total'));
+        $this->assertCount(6, $response->json('expenses.items'));
     }
 
     public function test_a_dated_query_narrows_to_that_day(): void

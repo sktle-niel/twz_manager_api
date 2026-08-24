@@ -72,7 +72,6 @@ class AdvanceTest extends TestCase
                 'storeId' => 'arevalo',
                 'day' => '2026-08-02',
                 'amount' => 4500.0,
-                'reference' => 'BDO-9021',
                 'covers' => ['2026-08-01'],
             ]),
             'slip' => [UploadedFile::fake()->image('slip.jpg')],
@@ -90,7 +89,7 @@ class AdvanceTest extends TestCase
         $this->actingAs($this->manager())->post('/api/deposits', [
             'payload' => json_encode([
                 'storeId' => 'arevalo', 'day' => '2026-08-02', 'amount' => 4500.0,
-                'reference' => 'BDO-9021', 'covers' => ['2026-08-01'],
+                'covers' => ['2026-08-01'],
             ]),
             'slip' => [UploadedFile::fake()->image('slip.jpg')],
         ], ['Accept' => 'application/json'])->assertOk();
