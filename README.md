@@ -35,7 +35,7 @@ past what Hostinger runs, even when local PHP is newer.
 | `GET /api/stores` | done (auth required) — real branches, synced from Loyverse |
 | `GET /api/settings/pos` | done (owner only) — connection status, linked-store count, token hint |
 | `POST /api/settings/pos/reconnect` | done (owner only) — live token validation with human answers |
-| `GET /api/sales/daily`, `GET /api/sales/hourly` | done — real Loyverse receipts, gross + gross profit |
+| `GET /api/sales/daily`, `GET /api/sales/hourly` | done — real Loyverse receipts, net sales + margin |
 | `GET /api/audits`, `GET /api/deposits`, `GET /api/deposits/pending` | done — the audit spine, deposits read-only |
 | `GET/POST/PATCH/DELETE /api/expenses`, `GET/PUT /api/expense-categories` | done — with receipt photos |
 | `GET /api/accounts/{id}/sign-ins` | done — recorded at login, "this device" by session |
@@ -45,9 +45,12 @@ past what Hostinger runs, even when local PHP is newer.
 | `POST /api/deposits` | done — slip photo hashed server-side (409 on a repeat), mismatch demands its reason |
 | still missing | `PATCH /api/account` (profile editing), search |
 
-**The house rule on money:** `expected deposit = gross profit - expenses`. The capital share
-of the takings stays in the shop to restock; what goes to the bank is the profit less the
-day's spend. Every audit row, backlog figure, and deposit match runs on it.
+**The house rule on money:** `expected deposit = net sales - expenses - advances`. Net sales is
+what the tills took with refunds netted and the excluded service/labor lines removed; out of it
+come the day's spend and any cash an employee drew against their pay, and the rest goes to the
+bank. Every audit row, backlog figure, and deposit match runs on it — the one place it is
+computed is `app/Support/AuditLedger.php`. Gross profit is still derived and reported as
+`profit`, but reconciliation is never judged on the margin.
 
 Error bodies follow the contract: `{ message, fields? }`, one human-readable message per
 field. A 401 from any endpoint drops the frontend to its sign-in screen.

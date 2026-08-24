@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\DB;
 /*
  * Services and labor are not sales: the money a customer pays for labor or a
  * diagnostic never sits in the drawer as parts takings, so those lines must
- * not raise the gross and profit the deposit reconciliation checks.
+ * not raise the net sales the deposit reconciliation checks (nor the margin
+ * reported beside it).
  *
  * Seeds the excluded-SKU list with the shop's SERVICES & LABOR items (the
  * owner's own price list grouping, 24 items), then clears the stored

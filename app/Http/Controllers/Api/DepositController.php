@@ -18,8 +18,8 @@ use Carbon\Carbon;
 
 /*
  * Deposits: the record a bank slip becomes. The expected figure a deposit is
- * matched against follows the house rule — net sales minus expenses; the
- * capital share of the takings stays in the shop to restock. Not all of it
+ * matched against follows the house rule — net sales minus the day's expenses
+ * and any cash advances drawn against pay. Not all of it
  * arrives as cash: GCash and bank-transfer sales land in the account without
  * touching the drawer, so the manager declares that `online` figure alongside
  * the slip and the match is judged on cash PLUS online against expected.

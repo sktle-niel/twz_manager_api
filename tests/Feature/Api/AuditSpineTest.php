@@ -73,7 +73,7 @@ class AuditSpineTest extends TestCase
                 'profit' => 5000.0,
                 'expenses' => 300.0,
                 'advances' => 0.0,
-                // profit - expenses - advances, the house rule (cost is zero here)
+                // net sales - expenses - advances, the house rule
                 'expected' => 4700.0,
                 'deposited' => null,
                 'online' => null,
