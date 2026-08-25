@@ -32,7 +32,8 @@ past what Hostinger runs, even when local PHP is newer.
 | `PUT /api/managers/{id}/password` | done (owner only) — recovery, behind the PIN |
 | `GET /api/settings/reset-pin` | done (owner only) — whether the PIN is still the shipped one |
 | `PUT /api/settings/reset-pin` | done (owner only) — change it |
-| `GET /api/stores` | done (auth required) — real branches, synced from Loyverse |
+| `GET /api/stores` | done (auth required) — real branches, synced from Loyverse, each with the bank it deposits to |
+| `PATCH /api/stores/{id}` | done (owner only) — `{ bank: "bdo" \| "bpi" }`; the manager's slip-photo check reads for that bank's form |
 | `GET /api/settings/pos` | done (owner only) — connection status, linked-store count, token hint |
 | `POST /api/settings/pos/reconnect` | done (owner only) — live token validation with human answers |
 | `GET /api/sales/daily`, `GET /api/sales/hourly` | done — real Loyverse receipts, net sales + margin |
