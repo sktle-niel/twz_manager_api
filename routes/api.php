@@ -109,6 +109,11 @@ Route::middleware('auth:web')->group(function () {
         Route::put('/expense-categories', [ExpenseCategoryController::class, 'replace']);
         Route::patch('/settings/reconciliation', [ReconciliationController::class, 'update']);
 
+        /* Which bank a branch deposits to (BDO or BPI). Branches themselves
+           come from Loyverse; this one fact about them is the owner's to set,
+           and the manager's slip-photo check reads for that bank's form. */
+        Route::patch('/stores/{store}', [StoreController::class, 'update']);
+
         /* Manager accounts are made HERE by the owner — never synced from
            Loyverse. One branch, one manager; occupied branches swap. */
         Route::get('/managers', [ManagerController::class, 'index']);
