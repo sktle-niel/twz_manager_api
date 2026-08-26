@@ -32,6 +32,7 @@ Thumbs.db
 /public/assets
 /public/manifest.webmanifest
 /public/sw.js
+/public/theme-boot.js
 /public/*.png
 /public/*.webp
 /public/*.svg
